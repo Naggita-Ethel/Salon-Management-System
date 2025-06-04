@@ -1,0 +1,7 @@
+<h2>{{ customer.full_name }}</h2>
+<p><strong>Phone:</strong> {{ customer.phone }}</p>
+<p><strong>Email:</strong> {{ customer.email }}</p>
+<p><strong>Loyalty Points:</strong> {{ customer.loyalty_points }}</p>
+
+<a href="{% url 'customer-edit' customer.pk %}">Edit</a> |
+<a href="{% url 'customer-list' %}">Back to list</a>
