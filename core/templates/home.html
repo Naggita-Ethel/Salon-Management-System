@@ -11,14 +11,14 @@
 <body>
   <header>
     <div class="brand">
-        <img src="{% static 'images/hair-salon-1.jpg' %}" alt="Salon logo" class="brand-logo">
+        <img src="{% static 'images/hair-salon.png' %}" alt="Salon logo" class="brand-logo">
         <span class="brand-name">Salon Management System</span>
     </div>
     <div class="user-info">
       Welcome, Super Admin
-      <form method="post" action="{% url 'logout' %}">
+      <form method="post" action="{% url 'logout' %}" style="display: inline; margin-left: 30px;">
         {% csrf_token %}
-        <button type="submit" style="background:none; color:white; border:none; cursor:pointer;">Logout</button>
+        <button type="submit" style="background:none; color:white; border:none; cursor:pointer;"> <img src="{% static 'images/user-logout.png' %}" alt="logout icon" style="width:20px; vertical-align: middle; margin-right: 5px;"> Logout</button>
       </form>
 
     </div>
@@ -50,20 +50,21 @@
   <section class="actions">
     <h2>Quick Actions</h2>
     <div class="links">
-      <a href="#">➕ Register New Business</a>
-      <a href="#">🏢 View All Branches</a>
-      <a href="#">👥 Manage Users</a>
-      <a href="#">📋 View All Services</a>
-      <a href="#">⚙️ System Settings</a>
+      <a href="{% url 'register-business' %}">
+        <img src="{% static 'images/store.png' %}" alt="add business">
+        <span>Register New Business</span>
+      </a>
+
+      <a href="#"> <img src="{% static 'images/branch.png' %}" alt="branch"> <span> View All Branches</span></a>
+      <a href="#"> <img src="{% static 'images/group.png' %}" alt="users"> <span>Manage Users</span></a>
+      <a href="#"> <img src="{% static 'images/page-views.png' %}" alt="add business"> <span> View All Services</span></a>
+      <a href="#"> <img src="{% static 'images/gears.png' %}" alt="add business"> <span>System Settings</a>
     </div>
   </section>
 
   <footer>
     <p>TRICSOFT TECHNOLOGIES LTD | Salon Management System © 2025</p>
   </footer>
-  <div style="text-align: center; margin-top: 100px;">
-    <h2>You are not logged in.</h2>
-    <p><a href="{% url 'login' %}">Go to login page</a></p>
-  </div>
+  
 </body>
 </html>

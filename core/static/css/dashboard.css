@@ -21,7 +21,7 @@ header {
 }
 
 .brand-logo {
-  width: 100px;       
+  width: 90px;       
   height: auto;
   border-radius: 8px;
 }
@@ -71,7 +71,18 @@ header {
   font-size: 25px;
 }
 
+.links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 15px;
+}
+
+
 .links a {
+  display: flex;                        
+  align-items: center;                
+  gap: 8px;    
   display: inline-block;
   margin-right: 20px;
   margin-bottom: 10px;
@@ -81,6 +92,13 @@ header {
   padding: 20px 30px;
   border-radius: 5px;
   
+}
+
+.links a img {
+  width: 30px;
+  height: 30px;
+  object-fit: contain;
+  vertical-align: middle; 
 }
 
 .links a:hover {
