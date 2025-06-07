@@ -1,14 +1,14 @@
 from django.urls import path
-from .views import CustomerListView, CustomerCreateView, CustomerUpdateView, CustomerDetailView, home_view, register_business_view
+from .views import dashboard_view, forgot_password, register_business, settings_view, transactions_view
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
 
-    path('', auth_views.LoginView.as_view(template_name='auth/login.html'), name='login'),
-    path('home/', home_view, name='home'), 
-    path('business/register/', register_business_view, name='register-business'),
-    path('customers/', CustomerListView.as_view(), name='customer-list'),
-    path('customers/add/', CustomerCreateView.as_view(), name='customer-add'),
-    path('customers/<int:pk>/edit/', CustomerUpdateView.as_view(), name='customer-edit'),
-    path('customers/<int:pk>/', CustomerDetailView.as_view(), name='customer-detail'),
+    path('', auth_views.LoginView.as_view(template_name='accounts/login.html'), name='login'),
+    path('forgot-password/', forgot_password, name='forgot-password'),
+    path('business/register/', register_business, name='register-business'),
+    path('dashboard/', dashboard_view, name='dashboard'), 
+    path('transactions/', transactions_view, name='transactions'),
+    path('settings/', settings_view, name='settings'),
+    
 ]

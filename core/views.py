@@ -1,56 +1,61 @@
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
 from .models import Branch, Business, Customer, Service, User
-from .forms import BusinessForm, CustomerForm
+from .forms import BusinessRegisterForm, LoginForm
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth import authenticate
+from django.views.decorators.http import require_POST
+from django.contrib.auth import logout
+from django.contrib.auth import authenticate, login
 
-@login_required(login_url='login')
-def home_view(request):
-    context = {
-        'total_businesses': Business.objects.count(),
-        'total_branches': Branch.objects.count(),
-        'total_users': User.objects.count(),
-        'total_services': Service.objects.count(),
-    }
-    return render(request, 'home.html', context)
 
-def is_super_admin(user):
-    return user.is_authenticated and user.is_super_admin
+def login_view(request):
+    form = LoginForm(request.POST or None)
 
-@login_required(login_url='login')
-# @user_passes_test(is_super_admin, login_url='login')
-def register_business_view(request):
-    if request.method == 'POST':
-        form = BusinessForm(request.POST)
+    msg = None
+
+    if request.method == "POST":
+
         if form.is_valid():
-            business = form.save(commit=False)
-            business.registered_by = request.user
-            business.save()
-            return redirect('home')
+            username = form.cleaned_data.get("username")
+            password = form.cleaned_data.get("password")
+            user = authenticate(username=username, password=password)
+            if user is not None:
+                login(request, user)
+                return redirect("dashboard")
+            else:
+                msg = 'Invalid credentials'
+        else:
+            msg = 'Error validating the form'
+
+    return render(request, "accounts/login.html", {"form": form, "msg": msg})
+
+
+@login_required(login_url='login')
+def dashboard_view(request):
+    return render(request, 'home/dashboard.html')
+
+def forgot_password(request):
+    return render(request, 'home/page-forgot-password.html')
+
+def register_business(request):
+    if request.method == 'POST':
+        form = BusinessRegisterForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect('login')  # Redirect to login after registration
     else:
-        form = BusinessForm()
-    return render(request, 'business/register_business.html', {'form': form})
+        form = BusinessRegisterForm()
 
-class CustomerListView(ListView):
-    model = Customer
-    template_name = 'customers/customer_list.html'
-    context_object_name = 'customers'
+    return render(request, 'accounts/register.html', {'form': form})
 
-class CustomerCreateView(CreateView):
-    model = Customer
-    form_class = CustomerForm
-    template_name = 'customers/customer_form.html'
-    success_url = reverse_lazy('customer-list')
+@login_required(login_url='login')
+def transactions_view(request):
+    return render(request, 'home/transactions.html')
 
-class CustomerUpdateView(UpdateView):
-    model = Customer
-    form_class = CustomerForm
-    template_name = 'customers/customer_form.html'
-    success_url = reverse_lazy('customer-list')
+@login_required(login_url='login')
+def settings_view(request):
+    return render(request, 'home/settings.html')
 
-class CustomerDetailView(DetailView):
-    model = Customer
-    template_name = 'customers/customer_detail.html'
-    context_object_name = 'customer'

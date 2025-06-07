@@ -4,25 +4,32 @@ from django.db import models
 from django.utils import timezone
 
 class User(AbstractUser):
-    is_super_admin = models.BooleanField(default=False)
-
+    email = models.EmailField(unique=True)
+    
     def __str__(self):
         return self.username
 
+
 class Business(models.Model):
     name = models.CharField(max_length=100)
-    registered_by = models.ForeignKey('User', on_delete=models.CASCADE, related_name='registered_businesses')
-    is_active = models.BooleanField(default=True)
+    owner = models.OneToOneField(User, on_delete=models.CASCADE)
+    contact = models.CharField(max_length=15)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
         return self.name
+
+    @property
+    def number_of_branches(self):
+        return self.branches.count()
+
     
 class Branch(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='branches')
     name = models.CharField(max_length=100)
     location = models.TextField()
-    is_active = models.BooleanField(default=True)
+    manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+
 
     def __str__(self):
         return f"{self.business.name} - {self.name}"
@@ -77,6 +84,7 @@ class Employee(models.Model):
     total_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
     def __str__(self):
+        
         return self.full_name
     
 class Payment(models.Model):

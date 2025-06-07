@@ -1,20 +1,47 @@
 from django import forms
-
 from core.models import Customer
+from .models import Business, User
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth import get_user_model
 
-from .models import Business
 
-class CustomerForm(forms.ModelForm):
+class BusinessRegisterForm(UserCreationForm):
+    owner_name = forms.CharField(max_length=150, label="Owner Name")
+    contact = forms.CharField(max_length=15)
+    business_name = forms.CharField(max_length=200)
+
     class Meta:
-        model = Customer
-        fields = ['full_name', 'phone', 'email', 'loyalty_points']
+        model = User
+        fields = ['username', 'email', 'password1', 'password2']
+
+    def save(self, commit=True):
+        user = super().save(commit=False)
+        user.first_name = self.cleaned_data['owner_name']
+        user.email = self.cleaned_data['email']
+        if commit:
+            user.save()
+            # Create the business without number_of_branches
+            Business.objects.create(
+                owner=user,
+                name=self.cleaned_data['business_name'],
+                contact=self.cleaned_data['contact'],
+            )
+        return user
 
 
-class BusinessForm(forms.ModelForm):
-    class Meta:
-        model = Business
-        fields = ['name', 'is_active']
-        widgets = {
-            'name': forms.TextInput(attrs={'class': 'form-control', 'placeholder': 'Business name'}),
-            'is_active': forms.CheckboxInput(),
-        }
+class LoginForm(forms.Form):
+    username = forms.CharField(
+        widget=forms.TextInput(
+            attrs={
+                "placeholder": "Username",
+                "class": "form-control"
+            }
+        ))
+    password = forms.CharField(
+        widget=forms.PasswordInput(
+            attrs={
+                "placeholder": "Password",
+                "class": "form-control"
+            }
+        ))
+
