@@ -59,3 +59,18 @@ def transactions_view(request):
 def settings_view(request):
     return render(request, 'home/settings.html')
 
+def tables_view(request):
+    return render(request, 'home/tables-bootstrap-tables.html')
+
+def pagelock_view(request):
+    return render(request, 'home/page-lock.html')
+
+def branch_view(request):
+    return render(request, 'home/branch.html')
+
+def forms_view(request):
+    return render(request, 'home/components-forms.html')
+
+def addbranch_view(request):
+    return render(request, 'home/add_branch.html')
+

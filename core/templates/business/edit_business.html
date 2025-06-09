@@ -1,0 +1,63 @@
+{% load static %}
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Edit Business</title>
+  <link rel="stylesheet" href="{% static 'css/dashboard.css' %}">
+  <link rel="stylesheet" href="{% static 'css/register_business.css' %}"> <!-- reuse same styling -->
+</head>
+<body>
+  <div class="page-wrapper">
+    <main>
+      <header>
+        <div class="brand">
+          <img src="{% static 'images/hair-salon.png' %}" alt="Salon logo" class="brand-logo">
+          <span class="brand-name">Salon Management System</span>
+        </div>
+        <div class="user-info">
+          Welcome, Admin
+          <form method="post" action="{% url 'logout' %}" style="display: inline; margin-left: 30px;">
+            {% csrf_token %}
+            <button type="submit" style="background:none; color:white; border:none; cursor:pointer;">
+              <img src="{% static 'images/user-logout.png' %}" alt="logout icon" style="width:20px; vertical-align: middle; margin-right: 5px;">
+              Logout
+            </button>
+          </form>
+        </div>
+      </header>
+
+      <a class="back-link" href="{% url 'business-list' %}">← Back </a>
+
+      <div class="form-container">
+        <h2>Edit Business: {{ business.name }}</h2>
+
+        <form method="post">
+          {% csrf_token %}
+          <table class="form-table">
+            {% for field in form %}
+              <tr>
+                <td>{{ field.label_tag }}</td>
+                <td>{{ field }}</td>
+              </tr>
+              {% if field.errors %}
+              <tr>
+                <td></td>
+                <td style="color: red;">{{ field.errors }}</td>
+              </tr>
+              {% endif %}
+            {% endfor %}
+          </table>
+          <br>
+          <div style="text-align: center;">
+            <button type="submit" class="btn-primary">Update</button>
+          </div>
+        </form>
+      </div>
+    </main>
+
+    <footer>
+      <p>TRICSOFT TECHNOLOGIES LTD | Salon Management System © 2025</p>
+    </footer>
+  </div>
+</body>
+</html>

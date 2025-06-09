@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import dashboard_view, forgot_password, register_business, settings_view, transactions_view
+from .views import addbranch_view, branch_view, dashboard_view, forgot_password, forms_view, pagelock_view, register_business, settings_view, tables_view, transactions_view
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
@@ -10,5 +10,10 @@ urlpatterns = [
     path('dashboard/', dashboard_view, name='dashboard'), 
     path('transactions/', transactions_view, name='transactions'),
     path('settings/', settings_view, name='settings'),
-    
+    path('tables/', tables_view, name='tables'),
+    path('pagelock/', pagelock_view, name='pagelock'),
+    path('branch/', branch_view, name='branch'),
+    path('forms/', forms_view, name='forms'),
+    path('add-branch/', addbranch_view, name='add-branch'),
 ]
+

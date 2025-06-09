@@ -25,10 +25,12 @@ class Business(models.Model):
 
     
 class Branch(models.Model):
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='branches')
     name = models.CharField(max_length=100)
     location = models.TextField()
-    manager = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('name', 'location')  # Prevent duplicates
 
 
     def __str__(self):

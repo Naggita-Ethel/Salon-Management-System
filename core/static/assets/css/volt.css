@@ -18275,10 +18275,10 @@ label {
     color: #1F2937; }
 
 .table .thead-light th {
-  background-color: #F2F4F6;
-  color: #1F2937; }
+  background-color: #F8BD7A;
+  color: #262B40; }
   .table .thead-light th a {
-    color: #1F2937; }
+    color: #262B40; }
 
 .table-hover tr {
   transition: all 0.2s ease; }
