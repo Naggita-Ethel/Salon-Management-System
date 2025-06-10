@@ -34,7 +34,8 @@
     
     <div class="card border-0 shadow components-section">
             <div class="card-body"> 
-                <form method="POST" action="/your-form-handler">  
+                <form method="POST" action="{% url 'add-branch' %}">
+                    {% csrf_token %}
                     <!-- Form -->
                     <div class="mb-4">
                         <label for="branch-name">Branch name</label>

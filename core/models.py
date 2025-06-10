@@ -25,16 +25,25 @@ class Business(models.Model):
 
     
 class Branch(models.Model):
+    business = models.ForeignKey(Business, related_name='branches', on_delete=models.CASCADE)
     name = models.CharField(max_length=100)
     location = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        unique_together = ('name', 'location')  # Prevent duplicates
-
+        unique_together = ('business', 'name', 'location')  # Unique within a business
 
     def __str__(self):
         return f"{self.business.name} - {self.name}"
+
+    
+class Service(models.Model):
+    branch = models.ForeignKey(Branch, related_name='services', on_delete=models.CASCADE)
+    name = models.CharField(max_length=100)
+    price = models.DecimalField(max_digits=10, decimal_places=2)
+
+    def __str__(self):
+        return f"{self.name} ({self.branch.name})"
     
 class UserRole(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='roles')
@@ -44,14 +53,17 @@ class UserRole(models.Model):
     def __str__(self):
         return f"{self.business.name} - {self.name}"
     
-class UserBusinessRole(models.Model):
-    user = models.ForeignKey('User', on_delete=models.CASCADE, related_name='business_roles')
-    business = models.ForeignKey(Business, on_delete=models.CASCADE)
+class BranchEmployee(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE)
+    branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='employees')
     role = models.ForeignKey(UserRole, on_delete=models.CASCADE)
     assigned_at = models.DateTimeField(auto_now_add=True)
 
+    class Meta:
+        unique_together = ('user', 'branch', 'role')  # prevent duplicate entries
+
     def __str__(self):
-        return f"{self.user.username} - {self.role.name} @ {self.business.name}"
+        return f"{self.user.username} as {self.role.name} at {self.branch.name}"
 
 class Customer(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='customers')
@@ -65,14 +77,7 @@ class Customer(models.Model):
     def __str__(self):
         return self.full_name
 
-class Service(models.Model):
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='services')
-    name = models.CharField(max_length=100)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
-    is_active = models.BooleanField(default=True)
 
-    def __str__(self):
-        return self.name
     
 class Employee(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE)

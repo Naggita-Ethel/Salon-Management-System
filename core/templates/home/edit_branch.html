@@ -1,0 +1,86 @@
+{% extends "layouts/base.html" %}
+
+{% load static %}
+
+{% block title %} Edit Branch {% endblock %}
+
+{% block stylesheets %}{% endblock stylesheets %}
+
+{% block content %}
+
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="{% url 'dashboard' %}">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'branch' %}">Branch Management</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Edit Branch</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Edit Branch</h1>
+            <p class="mb-0">Update your branch information and services.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow components-section">
+    <div class="card-body"> 
+        <form method="POST" action="{% url 'edit-branch' branch.id %}">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label for="branch-name">Branch Name</label>
+                <input type="text" class="form-control" id="branch-name" name="branch-name" value="{{ branch.name }}" required>
+            </div>
+
+            <div class="mb-4">
+                <label for="location">Branch Location</label>
+                <input type="text" class="form-control" id="location" name="location" value="{{ branch.location }}" required>
+            </div>
+
+            <div class="mb-4">
+            <label>Services and Prices</label>
+                <div id="services-container">
+                    {% for service in services %}
+                        <div class="input-group mb-2 service-row">
+                            <select name="services[]" class="form-select" onchange="toggleCustomInput(this)">
+                                <option value="">-- Select service or add new --</option>
+                                {% for s in predefined_services %}
+                                    <option value="{{ s }}" {% if service.name == s %}selected{% endif %}>{{ s }}</option>
+                                {% endfor %}
+                                <option value="custom" {% if service.name not in predefined_services %}selected{% endif %}>Other (Specify below)</option>
+                            </select>
+
+                            <input type="text" name="custom_services[]" class="form-control"
+                                placeholder="Custom Service Name"
+                                value="{% if service.name not in predefined_services %}{{ service.name }}{% endif %}"
+                                {% if service.name in predefined_services %}style="display: none;"{% endif %}>
+
+                            <input type="number" name="prices[]" class="form-control" placeholder="Price" value="{{ service.price }}" required>
+
+                            <button type="button" class="btn btn-outline-danger" onclick="removeServiceRow(this)">Remove</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+    <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="addService()">+ Add Service</button>
+</div>
+
+
+            <div style="text-align: center;">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">Update Branch</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+{% endblock content %}
+
+{% block javascripts %}
+    <script src="{% static 'assets/js/add-branch.js' %}"></script>
+{% endblock javascripts %}

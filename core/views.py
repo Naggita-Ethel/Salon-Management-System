@@ -66,11 +66,85 @@ def pagelock_view(request):
     return render(request, 'home/page-lock.html')
 
 def branch_view(request):
-    return render(request, 'home/branch.html')
+    branches = Branch.objects.prefetch_related('services').all()
+    return render(request, "home/branch.html", {"branches": branches})
 
 def forms_view(request):
     return render(request, 'home/components-forms.html')
 
 def addbranch_view(request):
-    return render(request, 'home/add_branch.html')
+    if request.method == "POST":
+        branch_name = request.POST.get("branch-name")
+        location = request.POST.get("location")
+        services = request.POST.getlist("services[]")
+        custom_services = request.POST.getlist("custom_services[]")
+        prices = request.POST.getlist("prices[]")
 
+        business = request.user.business
+
+        branch = Branch.objects.create(name=branch_name, location=location, business=business)
+
+        for i, service in enumerate(services):
+            if service == "custom":
+                service_name = custom_services[i]
+            else:
+                service_name = service
+
+            price = prices[i]
+            Service.objects.create(branch=branch, name=service_name, price=price)
+
+        return redirect("branch")  # redirect to a success page
+
+    return render(request, "home/add_branch.html")
+
+def edit_branch_view(request, branch_id):
+    branch = get_object_or_404(Branch, id=branch_id)
+    services = Service.objects.filter(branch=branch)
+
+    if request.method == "POST":
+        # Update branch info
+        branch.name = request.POST.get("branch-name")
+        branch.location = request.POST.get("location")
+        branch.save()
+
+        # Get posted form values
+        service_names = request.POST.getlist("services[]")
+        custom_services = request.POST.getlist("custom_services[]")
+        prices = request.POST.getlist("prices[]")
+
+        # Clear old services for a fresh update
+        Service.objects.filter(branch=branch).delete()
+
+        for i in range(len(prices)):
+            if not prices[i]:  # Skip empty/deleted rows (failsafe)
+                continue
+
+            name = service_names[i]
+            if name == "custom":
+                name = custom_services[i]  # use custom service name
+
+            # Only create service if name is not empty
+            if name.strip():
+                Service.objects.create(branch=branch, name=name.strip(), price=prices[i])
+
+        return redirect("branch")  # redirect to branch listing or detail
+
+    predefined_services = [
+        "Hair Cuts", "Hair Plaiting", "Massage",
+        "Manicure and Pedicure", "Hair washing", "Hair styling", "Hair treatment"
+    ]
+
+    return render(request, "home/edit_branch.html", {
+        "branch": branch,
+        "services": services,
+        "predefined_services": predefined_services
+    })
+
+def delete_branch_view(request, branch_id):
+    branch = get_object_or_404(Branch, id=branch_id)
+
+    if request.method == "POST":
+        branch.delete()  
+        return redirect("branch")  
+
+    return redirect("branch")
