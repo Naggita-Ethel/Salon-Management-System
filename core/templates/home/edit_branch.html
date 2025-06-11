@@ -42,7 +42,7 @@
                 <input type="text" class="form-control" id="location" name="location" value="{{ branch.location }}" required>
             </div>
 
-            <div class="mb-4">
+            {% comment %} <div class="mb-4">
             <label>Services and Prices</label>
                 <div id="services-container">
                     {% for service in services %}
@@ -66,7 +66,7 @@
                         </div>
                     {% endfor %}
                 </div>
-            </div>
+            </div> {% endcomment %}
 
     <button type="button" class="btn btn-sm btn-secondary mt-2" onclick="addService()">+ Add Service</button>
 </div>

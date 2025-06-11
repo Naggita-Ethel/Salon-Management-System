@@ -1,0 +1,94 @@
+{% extends "layouts/base.html" %}
+
+{% load static %}
+
+{% block title %} Add Service/Product {% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Tasks</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'services-products' %}">Services and Products</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Add Service/Product</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Add Service or Product</h1>
+            <p class="mb-0">Add a service or product to a specific branch.</p>
+        </div>
+    </div>
+</div>
+
+{% if branches %}
+<div class="card border-0 shadow components-section">
+    <div class="card-body">
+        {% if form_errors %}
+            <div class="alert alert-danger">
+                <ul>
+                    {% for error in form_errors %}
+                        <li>{{ error }}</li>
+                    {% endfor %}
+                </ul>
+            </div>
+        {% endif %}
+        <form method="POST" action="{% url 'add-service-product' %}">
+            {% csrf_token %}
+            <div class="mb-4">
+                <label for="branch">Select Branch</label>
+                <select class="form-select" id="branch" name="branch" required>
+                    <option value="">-- Select a branch --</option>
+                    {% for branch in branches %}
+                        <option value="{{ branch.id }}">{{ branch.name }} ({{ branch.location }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="mb-4">
+                <label for="item-type">Item Type</label>
+                <select class="form-select" id="item-type" name="item-type" onchange="toggleItemFields()" required>
+                    <option value="">-- Select type --</option>
+                    <option value="service">Service</option>
+                    <option value="product">Product</option>
+                </select>
+            </div>
+            <div class="mb-4">
+                <label for="name">Name</label>
+                <input type="text" class="form-control" id="name" name="name" required>
+            </div>
+            <div class="mb-4" id="service-price-field">
+                <label for="selling-price">Selling Price</label>
+                 <input type="number" step="0.01" min="0" class="form-control" id="selling-price" name="selling-price" required>
+            </div>
+            <div class="mb-4" id="product-cost-field" style="display: none;">
+                <label for="cost-price">Cost Price</label>
+                <input type="number" step="0.01" min="0" class="form-control" id="cost-price" name="cost-price">
+            </div>
+            <div style="text-align: center;">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">Add Item</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% else %}
+<div class="card border-0 shadow mb-4">
+    <div class="card-body text-center">
+        <p class="mb-0">No branches found. Please <a href="{% url 'add-branch' %}">add a branch</a> before adding services or products.</p>
+    </div>
+</div>
+{% endif %}
+
+{% endblock content %}
+
+{% block stylesheets %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+{% endblock stylesheets %}
+
+{% block javascripts %}
+    <script src="{% static 'assets/js/item.js' %}"></script>
+{% endblock javascripts %}

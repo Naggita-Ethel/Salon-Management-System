@@ -2,12 +2,22 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.utils import timezone
+from django.core.validators import MinValueValidator
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
-    
+    full_name = models.CharField(max_length=100, blank=True)
+    phone = models.CharField(max_length=15, blank=True)
+    address = models.TextField(blank=True)  # Added for employee address
+    GENDER_CHOICES = (
+        ('M', 'Male'),
+        ('F', 'Female'),
+        
+    )
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')  # Added for gender
+
     def __str__(self):
-        return self.username
+        return self.full_name or self.username
 
 
 class Business(models.Model):
@@ -36,14 +46,22 @@ class Branch(models.Model):
     def __str__(self):
         return f"{self.business.name} - {self.name}"
 
-    
-class Service(models.Model):
-    branch = models.ForeignKey(Branch, related_name='services', on_delete=models.CASCADE)
+class Item(models.Model):
+    ITEM_TYPES = (
+        ('service', 'Service'),
+        ('product', 'Product'),
+    )
+    branch = models.ForeignKey(Branch, related_name='items', on_delete=models.CASCADE)
+    type = models.CharField(max_length=20, choices=ITEM_TYPES)
     name = models.CharField(max_length=100)
-    price = models.DecimalField(max_digits=10, decimal_places=2)
+    selling_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.0)])
+    cost_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0.0)])
+
+    class Meta:
+        unique_together = ('branch', 'name', 'type')  # Unique name per type per branch
 
     def __str__(self):
-        return f"{self.name} ({self.branch.name})"
+        return f"{self.name} ({self.get_type_display()} at {self.branch.name})"
     
 class UserRole(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='roles')
@@ -54,19 +72,25 @@ class UserRole(models.Model):
         return f"{self.business.name} - {self.name}"
     
 class BranchEmployee(models.Model):
+    STATUS_CHOICES = (
+        ('active', 'Active'),
+        ('inactive', 'Inactive'),
+    )
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE, related_name='employees')
     role = models.ForeignKey(UserRole, on_delete=models.CASCADE)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
     assigned_at = models.DateTimeField(auto_now_add=True)
+    start_date = models.DateField(null=True, blank=True)
+    end_date = models.DateField(null=True, blank=True)
 
     class Meta:
-        unique_together = ('user', 'branch', 'role')  # prevent duplicate entries
+        unique_together = ('user', 'branch', 'role')
 
     def __str__(self):
-        return f"{self.user.username} as {self.role.name} at {self.branch.name}"
+        return f"{self.user.full_name} as {self.role.name} at {self.branch.name}"
 
 class Customer(models.Model):
-    business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='customers')
     branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
     full_name = models.CharField(max_length=100)
     phone = models.CharField(max_length=15)
@@ -78,22 +102,7 @@ class Customer(models.Model):
         return self.full_name
 
 
-    
-class Employee(models.Model):
-    business = models.ForeignKey(Business, on_delete=models.CASCADE)
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    full_name = models.CharField(max_length=100)
-    role = models.CharField(max_length=50)
-    is_active = models.BooleanField(default=True)
-    performance_score = models.DecimalField(max_digits=5, decimal_places=2, default=0.0)
-    created_at = models.DateTimeField(auto_now_add=True)
-    total_clients_served = models.IntegerField(default=0)
-    total_earnings = models.DecimalField(max_digits=10, decimal_places=2, default=0.00)
 
-    def __str__(self):
-        
-        return self.full_name
-    
 class Payment(models.Model):
     METHOD_CHOICES = [
         ('Cash', 'Cash'),
@@ -118,24 +127,6 @@ class Payment(models.Model):
         return f"{self.amount} ({self.method})"
 
 
-class Visit(models.Model):
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE, related_name='visits')
-    branch = models.ForeignKey(Branch, on_delete=models.CASCADE)
-    visit_date = models.DateTimeField(auto_now_add=True)
-    added_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)  # receptionist, manager etc.
-    notes = models.TextField(blank=True)
-
-    def __str__(self):
-        return f"{self.customer.full_name} visited on {self.visit_date.strftime('%Y-%m-%d %H:%M')}"
-
-class VisitService(models.Model):
-    visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name='visit_services')
-    service = models.ForeignKey(Service, on_delete=models.CASCADE)
-    price_at_time = models.DecimalField(max_digits=10, decimal_places=2)
-    performed_by = models.ForeignKey(Employee, on_delete=models.SET_NULL, null=True, blank=True, related_name='performed_services')
-
-    def __str__(self):
-        return f"{self.visit.customer.full_name} - {self.service.name}"
     
 class Coupon(models.Model):
     code = models.CharField(max_length=50, unique=True)
@@ -144,7 +135,7 @@ class Coupon(models.Model):
     valid_from = models.DateTimeField()
     valid_until = models.DateTimeField()
     min_spend = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # optional
-    applicable_services = models.ManyToManyField('Service', blank=True)  # limit to services
+    applicable_items = models.ManyToManyField('Item', blank=True)  # limit to items
     is_active = models.BooleanField(default=True)
     usage_limit = models.IntegerField(null=True, blank=True)  # optional
     
@@ -152,15 +143,6 @@ class Coupon(models.Model):
     def __str__(self):
         return self.code
 
-class CouponUsage(models.Model):
-    coupon = models.ForeignKey(Coupon, on_delete=models.CASCADE, related_name='coupon_usages')
-    customer = models.ForeignKey(Customer, on_delete=models.CASCADE)
-    used_at = models.DateTimeField(auto_now_add=True)
-    visit = models.ForeignKey(Visit, on_delete=models.CASCADE, related_name='services')
-    
-
-    def __str__(self):
-        return f"{self.customer.full_name} used {self.coupon.code}"
 
 class Expense(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='expenses')
@@ -181,14 +163,6 @@ class ExpenseCategory(models.Model):
     def __str__(self):
         return self.name
     
-class Payroll(models.Model):
-    employee = models.ForeignKey(Employee, on_delete=models.CASCADE)
-    period_start = models.DateField()
-    period_end = models.DateField()
-    total_clients = models.PositiveIntegerField()
-    total_revenue = models.DecimalField(max_digits=10, decimal_places=2)
-    calculated_pay = models.DecimalField(max_digits=10, decimal_places=2)
-    generated_at = models.DateTimeField(auto_now_add=True)
 
 
 

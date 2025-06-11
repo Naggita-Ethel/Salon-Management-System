@@ -1,0 +1,134 @@
+{% extends "layouts/base.html" %}
+
+{% block title %} Services and Products {% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Tasks</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Services and Products</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Services and Products</h1>
+            <p class="mb-0">Manage services and products for your branches</p>
+        </div>
+        <div>
+            <a href="{% url 'add-service-product' %}" class="btn d-inline-flex align-items-center" style="background-color: #F8BD7A; color: #262B40; border: none;">
+                <svg class="icon icon-xs me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                </svg>
+                Add Service/Product
+            </a>
+        </div>
+    </div>
+</div>
+
+{% if branches %}
+    {% for branch in branches %}
+    <div class="card border-0 shadow mb-4">
+        <div class="card-body">
+            <h5>{{ branch.name }} ({{ branch.location }})</h5>
+            <h6>Services</h6>
+            <div class="table-responsive">
+                <table class="table table-hover table-centered table-nowrap mb-0 rounded">
+                    <thead style="background-color: #F8BD7A; color: #262B40;">
+                        <tr>
+                            <th class="border-0 rounded-start">#</th>
+                            <th class="border-0">Service Name</th>
+                            <th class="border-0">Selling Price</th>
+                            <th class="border-0 rounded-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in branch.items.all|dictsort:"name" %}
+                            {% if item.type == 'service' %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td><strong>{{ item.name }}</strong></td>
+                                <td>{{ item.selling_price }}</td>
+                                <td>
+                                    <a href="{% url 'edit-service-product' item.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form method="POST" action="{% url 'delete-service-product' item.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this service?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        {% empty %}
+                            <tr>
+                                <td colspan="4" class="text-center">No services found for this branch.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <h6 class="mt-4">Products</h6>
+            <div class="table-responsive">
+                <table class="table table-hover table-centered table-nowrap mb-0 rounded">
+                    <thead style="background-color: #F8BD7A; color: #262B40;">
+                        <tr>
+                            <th class="border-0 rounded-start">#</th>
+                            <th class="border-0">Product Name</th>
+                            <th class="border-0">Cost Price</th>
+                            <th class="border-0">Selling Price</th>
+                            <th class="border-0 rounded-end">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in branch.items.all|dictsort:"name" %}
+                            {% if item.type == 'product' %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td><strong>{{ item.name }}</strong></td>
+                                <td>{{ item.cost_price|default:"N/A" }}</td>
+                                <td>{{ item.selling_price }}</td>
+                                <td>
+                                    <a href="{% url 'edit-service-product' item.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                    <form method="POST" action="{% url 'delete-service-product' item.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this product?');">
+                                        {% csrf_token %}
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        {% empty %}
+                            <tr>
+                                <td colspan="5" class="text-center">No products found for this branch.</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+{% else %}
+    <div class="card border-0 shadow mb-4">
+        <div class="card-body text-center">
+            <p class="mb-0">No branches found. Please <a href="{% url 'add-branch' %}">add a branch</a> before managing services and products.</p>
+        </div>
+    </div>
+{% endif %}
+{% endblock content %}
+
+{% block stylesheets %}
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+{% endblock stylesheets %}

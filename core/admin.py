@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from core.models import Branch, BranchEmployee, Business, Customer, Service, UserRole
+from core.models import Branch, BranchEmployee, Business, Customer,Item, UserRole
 
 # Use the custom user model
 User = get_user_model()
@@ -26,9 +26,9 @@ class UserAdmin(admin.ModelAdmin):
 class UserRoleAdmin(admin.ModelAdmin):
     list_display = all_fields(UserRole)
 
-@admin.register(Service)
-class ServiceAdmin(admin.ModelAdmin):
-    list_display = all_fields(Service)
+@admin.register(Item)
+class ItemAdmin(admin.ModelAdmin):
+    list_display = all_fields(Item)
 
 @admin.register(BranchEmployee)
 class BranchEmployeeAdmin(admin.ModelAdmin):
