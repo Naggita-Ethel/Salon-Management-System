@@ -207,15 +207,22 @@ def delete_service_product_view(request, item_id):
 
     return redirect('services-products')
 
+def get_user_business(user):
+    if hasattr(user, 'business'):
+        return user.business
+    elif hasattr(user, 'branchemployee'):
+        return user.branchemployee.branch.business
+    return None
+
 @login_required
 def employees_view(request):
-    business = getattr(request.user, 'business', None)
+    business = get_user_business(request.user)
     branches = Branch.objects.filter(business=business).prefetch_related('employees__user', 'employees__role') if business else []
     return render(request, 'home/employees.html', {'branches': branches})
 
 @login_required
 def add_employee_view(request):
-    business = getattr(request.user, 'business', None)
+    business = get_user_business(request.user)
     branches = Branch.objects.filter(business=business) if business else []
     roles = UserRole.objects.filter(business=business) if business else []
 
@@ -224,7 +231,7 @@ def add_employee_view(request):
 
     form_errors = []
     if request.method == 'POST':
-        username = request.POST.get('username')
+        username = request.POST.get('username')  # You can remove this if not used
         email = request.POST.get('email')
         full_name = request.POST.get('full_name')
         phone = request.POST.get('phone')
@@ -232,36 +239,54 @@ def add_employee_view(request):
         gender = request.POST.get('gender')
         branch_id = request.POST.get('branch')
         role_id = request.POST.get('role')
+        custom_role_name = request.POST.get('custom_role')
         status = request.POST.get('status')
         start_date = request.POST.get('start_date') or None
 
-        if not all([username, email, full_name, branch_id, role_id, status, gender]):
+        if not all([email, full_name, branch_id, status, gender]):
             form_errors.append("All required fields must be filled.")
         else:
             try:
                 branch = get_object_or_404(Branch, id=branch_id, business=business)
-                role = get_object_or_404(UserRole, id=role_id, business=business)
-                user, created = User.objects.get_or_create(
-                    username=username,
-                    defaults={
-                        'email': email,
-                        'full_name': full_name,
-                        'phone': phone,
-                        'address': address,
-                        'gender': gender
-                    }
-                )
-                if not created and (user.email != email or user.full_name != full_name):
-                    form_errors.append("Username exists with different email or full name.")
-                else:
-                    BranchEmployee.objects.create(
-                        user=user,
-                        branch=branch,
-                        role=role,
-                        status=status,
-                        start_date=start_date
+
+                # Handle custom role if "Other" is selected
+                if role_id == 'other' and custom_role_name:
+                    role, _ = UserRole.objects.get_or_create(
+                        name=custom_role_name,
+                        business=business
                     )
-                    return redirect('employees')
+                elif role_id and role_id != 'other':
+                    role = get_object_or_404(UserRole, id=role_id, business=business)
+                else:
+                    role = None
+                    form_errors.append("Please select a role or enter a custom one.")
+
+                if role:
+                    # Auto-generate a username from email or name if username not required
+                    generated_username = email.split('@')[0] if email else full_name.replace(' ', '').lower()
+                    user, created = User.objects.get_or_create(
+                        username=generated_username,
+                        defaults={
+                            'email': email,
+                            'full_name': full_name,
+                            'phone': phone,
+                            'address': address,
+                            'gender': gender
+                        }
+                    )
+
+                    if not created and (user.email != email or user.full_name != full_name):
+                        form_errors.append("A user with this username already exists with different info.")
+                    else:
+                        BranchEmployee.objects.create(
+                            user=user,
+                            branch=branch,
+                            role=role,
+                            status=status,
+                            start_date=start_date
+                        )
+                        return redirect('employees')
+
             except Exception as e:
                 form_errors.append(str(e))
 
@@ -271,9 +296,10 @@ def add_employee_view(request):
         'form_errors': form_errors
     })
 
+
 @login_required
 def edit_employee_view(request, employee_id):
-    business = getattr(request.user, 'business', None)
+    business = get_user_business(request.user)
     branches = Branch.objects.filter(business=business) if business else []
     roles = UserRole.objects.filter(business=business) if business else []
     employee = get_object_or_404(BranchEmployee, id=employee_id, branch__business=business)
@@ -320,7 +346,7 @@ def edit_employee_view(request, employee_id):
 
 @login_required
 def delete_employee_view(request, employee_id):
-    business = getattr(request.user, 'business', None)
+    business = get_user_business(request.user)
     employee = get_object_or_404(BranchEmployee, id=employee_id, branch__business=business)
 
     if request.method == 'POST':

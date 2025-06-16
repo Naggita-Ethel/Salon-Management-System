@@ -1,5 +1,5 @@
 from django.urls import path
-from .views import add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_service_product_view, edit_branch_view, edit_service_product_view, forgot_password, forms_view, pagelock_view, register_business, services_products_view, settings_view, tables_view, transactions_view
+from .views import add_employee_view, add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, forgot_password, forms_view, pagelock_view, register_business, services_products_view, settings_view, tables_view, transactions_view
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
@@ -10,10 +10,8 @@ urlpatterns = [
     path('dashboard/', dashboard_view, name='dashboard'), 
     path('transactions/', transactions_view, name='transactions'),
     path('settings/', settings_view, name='settings'),
-    path('tables/', tables_view, name='tables'),
     path('pagelock/', pagelock_view, name='pagelock'),
     path('branch/', branch_view, name='branch'),
-    path('forms/', forms_view, name='forms'),
     path('add-branch/', addbranch_view, name='add-branch'),
     path('edit-branch/<int:branch_id>/', edit_branch_view, name='edit-branch'),
     path('branch/<int:branch_id>/delete/', delete_branch_view, name='delete-branch'),
@@ -21,6 +19,10 @@ urlpatterns = [
     path('services-products/add/', add_service_product_view, name='add-service-product'),
     path('services-products/edit/<int:item_id>/', edit_service_product_view, name='edit-service-product'),
     path('services-products/delete/<int:item_id>/', delete_service_product_view, name='delete-service-product'),
+    path('employees/<int:employee_id>/edit/', edit_employee_view, name='edit-employee'),
+    path('employees/', employees_view, name='employees'),
+    path('employees/add/', add_employee_view, name='add-employee'),
+    path('employees/delete/<int:employee_id>/', delete_employee_view, name='delete-employee'),
 
 ]
 

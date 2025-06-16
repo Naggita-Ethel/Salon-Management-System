@@ -14,7 +14,7 @@ class User(AbstractUser):
         ('F', 'Female'),
         
     )
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES, default='U')  # Added for gender
+    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)  # Added for gender
 
     def __str__(self):
         return self.full_name or self.username
