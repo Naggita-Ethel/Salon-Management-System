@@ -40,17 +40,13 @@
         <form method="POST" action="{% url 'edit-service-product' item.id %}">
             {% csrf_token %}
             <div class="mb-4">
-                <label for="branch">Select Branch</label>
-                <select class="form-select" id="branch" name="branch" required>
-                    <option value="">-- Select a branch --</option>
-                    {% for branch in branches %}
-                        <option value="{{ branch.id }}" {% if branch.id == item.branch.id %}selected{% endif %}>{{ branch.name }} ({{ branch.location }})</option>
-                    {% endfor %}
-                </select>
+                <label for="business">Business</label>
+                <input type="text" class="form-control" id="business" name="business" value="{{ business.name }}" readonly>
+                <input type="hidden" name="business_id" value="{{ business.id }}">
             </div>
             <div class="mb-4">
                 <label for="item-type">Item Type</label>
-                <select class="form-select" id="item-type" name="item-type" onchange="toggleItemFields()" disabled>
+                <select class="form-select" id="item-type" name="item-type" onchange="toggleItemFields()">
                     <option value="service" {% if item.type == 'service' %}selected{% endif %}>Service</option>
                     <option value="product" {% if item.type == 'product' %}selected{% endif %}>Product</option>
                 </select>

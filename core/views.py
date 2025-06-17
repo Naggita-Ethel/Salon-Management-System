@@ -1,15 +1,19 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
 from .models import Branch, BranchEmployee, Business, Customer, Item, User, UserRole
-from .forms import BusinessRegisterForm, LoginForm
+from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
 from django.views.decorators.http import require_POST
 from django.contrib.auth import logout
 from django.contrib.auth import authenticate, login
+import logging
+
+from core import forms
 
 
 def login_view(request):
@@ -118,88 +122,132 @@ def delete_branch_view(request, branch_id):
 @login_required
 def services_products_view(request):
     business = getattr(request.user, 'business', None)
-    branches = Branch.objects.filter(business=business) if business else []
-    return render(request, 'home/item.html', {'branches': branches})
+    if not business:
+        return render(request, 'home/item.html', {'services': [], 'products': []})
+    
+    items = Item.objects.filter(business=business).order_by('name')
+    services = items.filter(type='service')
+    products = items.filter(type='product')
+    
+    return render(request, 'home/item.html', {
+        'services': services,
+        'products': products
+    })
+
+
+
+logger = logging.getLogger(__name__)
 
 @login_required
 def add_service_product_view(request):
     business = getattr(request.user, 'business', None)
-    branches = Branch.objects.filter(business=business) if business else []
-
-    if not branches:
-        return redirect('services-products')  # Redirects to list page with no-branch message
+    if not business:
+        logger.warning("User %s has no business, redirecting.", request.user)
+        return redirect('services-products')
 
     form_errors = []
     if request.method == 'POST':
-        branch_id = request.POST.get('branch')
-        item_type = request.POST.get('item-type')
+        logger.debug("POST data: %s", request.POST)
+        item_type = request.POST.get('item_type')
+        name = request.POST.get('name', '').strip()
+        selling_price = request.POST.get('selling_price')
+        cost_price = request.POST.get('cost_price')
+
+        # Validation
+        if not item_type:
+            form_errors.append("Item Type is required.")
+        if not name:
+            form_errors.append("Name is required.")
+        if not selling_price:
+            form_errors.append("Selling Price is required.")
+        if item_type == 'product' and not cost_price:
+            form_errors.append("Cost Price is required for products.")
+
+        if not form_errors:
+            if item_type not in ['service', 'product']:
+                form_errors.append("Invalid item type selected.")
+            else:
+                try:
+                    selling_price = Decimal(selling_price)
+                    cost_price = Decimal(cost_price) if cost_price else None
+                    if selling_price < 0 or (cost_price is not None and cost_price < 0):
+                        form_errors.append("Prices cannot be negative.")
+                except InvalidOperation:
+                    form_errors.append("Invalid price format. Please enter valid numbers.")
+                    selling_price = None
+                    cost_price = None
+
+                # Check for duplicate item
+                if not form_errors and Item.objects.filter(business=business, name=name, type=item_type).exists():
+                    form_errors.append(f"A {item_type} named '{name}' already exists for this business.")
+
+                if not form_errors:
+                    try:
+                        Item.objects.create(
+                            business=business,
+                            type=item_type,
+                            name=name,
+                            selling_price=selling_price,
+                            cost_price=cost_price if item_type == 'product' else None
+                        )
+                        logger.info("Created item: %s (%s) for business %s", name, item_type, business)
+                        return redirect('services-products')
+                    except Exception as e:
+                        form_errors.append(f"Error creating item: {str(e)}")
+                        logger.error("Error creating item: %s", str(e))
+
+    return render(request, 'home/add_item.html', {
+        'form_errors': form_errors
+    })
+
+
+@login_required
+def edit_service_product_view(request, item_id):
+    business = getattr(request.user, 'business', None)
+    if not business:
+        return redirect('services-products')  # Redirect if no business is associated
+
+    item = get_object_or_404(Item, id=item_id, business=business)
+
+    form_errors = []
+    if request.method == 'POST':
         name = request.POST.get('name')
         selling_price = request.POST.get('selling-price')
         cost_price = request.POST.get('cost-price')
+        item_type = request.POST.get('item-type')
 
         if not name or not selling_price or (item_type == 'product' and not cost_price):
             form_errors.append("All required fields must be filled. Cost price is required for products.")
         elif Decimal(selling_price) < 0 or (cost_price and Decimal(cost_price) < 0):
             form_errors.append("Prices cannot be negative.")
-        else:
-            branch = get_object_or_404(Branch, id=branch_id, business=business)
-            try:
-                Item.objects.create(
-                    branch=branch,
-                    type=item_type,
-                    name=name,
-                    selling_price=selling_price,
-                    cost_price=cost_price if item_type == 'product' else None
-                )
-                return redirect('services-products')
-            except Exception as e:
-                form_errors.append(str(e))
-
-    return render(request, 'home/add_item.html', {
-        'branches': branches,
-        'form_errors': form_errors
-    })
-
-@login_required
-def edit_service_product_view(request, item_id):
-    business = getattr(request.user, 'business', None)
-    branches = Branch.objects.filter(business=business) if business else []
-    item = get_object_or_404(Item, id=item_id, branch__business=business)
-
-    form_errors = []
-    if request.method == 'POST':
-        name = request.POST.get('name')
-        selling_price = request.POST.get('selling-price')
-        cost_price = request.POST.get('cost-price')
-        branch_id = request.POST.get('branch')
-        branch = get_object_or_404(Branch, id=branch_id, business=business)
-
-        if not name or not selling_price or (item.type == 'product' and not cost_price):
-            form_errors.append("All required fields must be filled. Cost price is required for products.")
-        elif Decimal(selling_price) < 0 or (cost_price and Decimal(cost_price) < 0):
-            form_errors.append("Prices cannot be negative.")
+        elif item_type not in ['service', 'product']:
+            form_errors.append("Invalid item type selected.")
         else:
             try:
                 item.name = name
                 item.selling_price = selling_price
-                item.cost_price = cost_price if item.type == 'product' else None
-                item.branch = branch
+                item.cost_price = cost_price if item_type == 'product' else None
+                item.type = item_type
+                item.business = business
                 item.save()
                 return redirect('services-products')
             except Exception as e:
                 form_errors.append(str(e))
 
     return render(request, 'home/edit_item.html', {
-        'branches': branches,
         'item': item,
         'item_type': item.type,
-        'form_errors': form_errors
+        'form_errors': form_errors,
+        'business': business
     })
 
 @login_required
 def delete_service_product_view(request, item_id):
     business = getattr(request.user, 'business', None)
-    item = get_object_or_404(Item, id=item_id, branch__business=business)
+    if not business:
+        return redirect('services-products')  # Redirect if no business is associated
+
+    item = get_object_or_404(Item, id=item_id, business=business)
 
     if request.method == 'POST':
         item.delete()
@@ -220,128 +268,109 @@ def employees_view(request):
     branches = Branch.objects.filter(business=business).prefetch_related('employees__user', 'employees__role') if business else []
     return render(request, 'home/employees.html', {'branches': branches})
 
+
+
 @login_required
 def add_employee_view(request):
     business = get_user_business(request.user)
     branches = Branch.objects.filter(business=business) if business else []
-    roles = UserRole.objects.filter(business=business) if business else []
 
     if not branches:
         return redirect('employees')
 
-    form_errors = []
-    if request.method == 'POST':
-        username = request.POST.get('username')  # You can remove this if not used
-        email = request.POST.get('email')
-        full_name = request.POST.get('full_name')
-        phone = request.POST.get('phone')
-        address = request.POST.get('address')
-        gender = request.POST.get('gender')
-        branch_id = request.POST.get('branch')
-        role_id = request.POST.get('role')
-        custom_role_name = request.POST.get('custom_role')
-        status = request.POST.get('status')
-        start_date = request.POST.get('start_date') or None
+    form = AddEmployeeForm(request.POST or None, business=business)
 
-        if not all([email, full_name, branch_id, status, gender]):
-            form_errors.append("All required fields must be filled.")
-        else:
-            try:
-                branch = get_object_or_404(Branch, id=branch_id, business=business)
+    if request.method == 'POST' and form.is_valid():
+        try:
+            email = form.cleaned_data['email']
+            full_name = form.cleaned_data['full_name']
+            phone = form.cleaned_data['phone']
+            address = form.cleaned_data['address']
+            gender = form.cleaned_data['gender']
+            branch = form.cleaned_data['branch']
+            role_name = form.cleaned_data['role']
+            custom_role_name = form.cleaned_data['custom_role']
+            status = form.cleaned_data['status']
+            start_date = form.cleaned_data['start_date']
 
-                # Handle custom role if "Other" is selected
-                if role_id == 'other' and custom_role_name:
-                    role, _ = UserRole.objects.get_or_create(
-                        name=custom_role_name,
-                        business=business
-                    )
-                elif role_id and role_id != 'other':
-                    role = get_object_or_404(UserRole, id=role_id, business=business)
-                else:
-                    role = None
-                    form_errors.append("Please select a role or enter a custom one.")
+            if role_name == 'other' and custom_role_name:
+                role, _ = UserRole.objects.get_or_create(
+                    name=custom_role_name,
+                    business=business
+                )
+            else:
+                role, _ = UserRole.objects.get_or_create(
+                    name=role_name,
+                    business=business
+                )
 
-                if role:
-                    # Auto-generate a username from email or name if username not required
-                    generated_username = email.split('@')[0] if email else full_name.replace(' ', '').lower()
-                    user, created = User.objects.get_or_create(
-                        username=generated_username,
-                        defaults={
-                            'email': email,
-                            'full_name': full_name,
-                            'phone': phone,
-                            'address': address,
-                            'gender': gender
-                        }
-                    )
+            user = User.objects.filter(email=email).first()
+            if not user:
+                generated_username = email.split('@')[0]
+                user = User.objects.create_user(
+                    username=generated_username,
+                    email=email,
+                    full_name=full_name,
+                    phone=phone,
+                    address=address,
+                    gender=gender,
+                    password='default123'  # Consider a better password strategy
+                )
+            else:
+                user.full_name = full_name
+                user.phone = phone
+                user.address = address
+                user.gender = gender
+                user.save()
 
-                    if not created and (user.email != email or user.full_name != full_name):
-                        form_errors.append("A user with this username already exists with different info.")
-                    else:
-                        BranchEmployee.objects.create(
-                            user=user,
-                            branch=branch,
-                            role=role,
-                            status=status,
-                            start_date=start_date
-                        )
-                        return redirect('employees')
+            BranchEmployee.objects.create(
+                user=user,
+                branch=branch,
+                role=role,
+                status=status,
+                start_date=start_date
+            )
+            return redirect('employees')
 
-            except Exception as e:
-                form_errors.append(str(e))
+        except Exception as e:
+            form.add_error(None, str(e))
 
     return render(request, 'home/add_employee.html', {
         'branches': branches,
-        'roles': roles,
-        'form_errors': form_errors
+        'form': form
     })
+
 
 
 @login_required
 def edit_employee_view(request, employee_id):
     business = get_user_business(request.user)
-    branches = Branch.objects.filter(business=business) if business else []
-    roles = UserRole.objects.filter(business=business) if business else []
     employee = get_object_or_404(BranchEmployee, id=employee_id, branch__business=business)
 
-    form_errors = []
-    if request.method == 'POST':
-        full_name = request.POST.get('full_name')
-        phone = request.POST.get('phone')
-        address = request.POST.get('address')
-        gender = request.POST.get('gender')
-        branch_id = request.POST.get('branch')
-        role_id = request.POST.get('role')
-        status = request.POST.get('status')
-        start_date = request.POST.get('start_date') or None
-        end_date = request.POST.get('end_date') or None
+    form = EditEmployeeForm(request.POST or None, business=business, employee=employee)
 
-        if not all([full_name, branch_id, role_id, status, gender]):
-            form_errors.append("All required fields must be filled.")
-        else:
-            try:
-                branch = get_object_or_404(Branch, id=branch_id, business=business)
-                role = get_object_or_404(UserRole, id=role_id, business=business)
-                employee.user.full_name = full_name
-                employee.user.phone = phone
-                employee.user.address = address
-                employee.user.gender = gender
-                employee.user.save()
-                employee.branch = branch
-                employee.role = role
-                employee.status = status
-                employee.start_date = start_date
-                employee.end_date = end_date
-                employee.save()
-                return redirect('employees')
-            except Exception as e:
-                form_errors.append(str(e))
+    if request.method == 'POST' and form.is_valid():
+        try:
+            employee.user.username = form.cleaned_data['username']
+            employee.user.email = form.cleaned_data['email']
+            employee.user.full_name = form.cleaned_data['full_name']
+            employee.user.phone = form.cleaned_data['phone']
+            employee.user.address = form.cleaned_data['address']
+            employee.user.gender = form.cleaned_data['gender']
+            employee.user.save()
+            employee.branch = form.cleaned_data['branch']
+            employee.role = form.cleaned_data['role']
+            employee.status = form.cleaned_data['status']
+            employee.start_date = form.cleaned_data['start_date']
+            employee.end_date = form.cleaned_data['end_date']
+            employee.save()
+            return redirect('employees')
+        except Exception as e:
+            form.add_error(None, str(e))
 
     return render(request, 'home/edit_employee.html', {
-        'branches': branches,
-        'roles': roles,
         'employee': employee,
-        'form_errors': form_errors
+        'form': form
     })
 
 @login_required

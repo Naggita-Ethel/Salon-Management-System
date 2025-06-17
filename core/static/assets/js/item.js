@@ -1,13 +1,20 @@
 function toggleItemFields() {
-    const itemType = document.getElementById('item-type').value;
-    const servicePriceField = document.getElementById('service-price-field');
+    const itemTypeSelect = document.getElementById('item-type');
     const productCostField = document.getElementById('product-cost-field');
-    
-    if (itemType === 'product') {
-        productCostField.style.display = 'block';
-        document.getElementById('cost-price').setAttribute('required', 'required');
-    } else {
-        productCostField.style.display = 'none';
-        document.getElementById('cost-price').removeAttribute('required');
+    const costPriceInput = document.getElementById('cost-price');
+    productCostField.style.display = itemTypeSelect.value === 'product' ? 'block' : 'none';
+    if (itemTypeSelect.value !== 'product' && costPriceInput) {
+        costPriceInput.value = '';
+        costPriceInput.required = false;
+    } else if (itemTypeSelect.value === 'product' && costPriceInput) {
+        costPriceInput.required = true;
     }
 }
+
+document.addEventListener('DOMContentLoaded', function() {
+    const itemTypeSelect = document.getElementById('item-type');
+    if (itemTypeSelect) {
+        itemTypeSelect.addEventListener('change', toggleItemFields);
+        toggleItemFields();
+    }
+});

@@ -45,6 +45,9 @@
                             <th class="border-0">Email</th>
                             <th class="border-0">Phone</th>
                             <th class="border-0">Role</th>
+                            <th class="border-0">Gender</th>
+                            <th class="border-0">Address</th>
+                            <th class="border-0">Start Date</th>
                             <th class="border-0">Status</th>
                             <th class="border-0 rounded-end">Actions</th>
                         </tr>
@@ -57,6 +60,9 @@
                             <td>{{ employee.user.email }}</td>
                             <td>{{ employee.user.phone|default:"N/A" }}</td>
                             <td>{{ employee.role.name }}</td>
+                            <td>{{ employee.user.gender }}</td>
+                            <td>{{ employee.user.address }}</td>
+                            <td>{{ employee.start_date|date:"Y-m-d"|default:"N/A" }}</td> <!-- Corrected -->
                             <td>{{ employee.get_status_display }}</td>
                             <td>
                                 <a href="{% url 'edit-employee' employee.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
