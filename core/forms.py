@@ -1,5 +1,4 @@
 from django import forms
-from core.models import Customer
 from .models import Branch, Business, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model

@@ -3,7 +3,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from .models import Branch, BranchEmployee, Business, Customer, Item, User, UserRole
+from .models import Branch, BranchEmployee, Business, Item, User, UserRole
 from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
@@ -57,8 +57,8 @@ def register_business(request):
     return render(request, 'accounts/register.html', {'form': form})
 
 @login_required(login_url='login')
-def transactions_view(request):
-    return render(request, 'home/transactions.html')
+def expenses_view(request):
+    return render(request, 'home/expenses.html')
 
 @login_required(login_url='login')
 def settings_view(request):
