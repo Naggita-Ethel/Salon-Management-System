@@ -151,6 +151,9 @@ class Transaction(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     quantity = models.PositiveIntegerField(default=1)
+    expense_name = models.CharField(max_length=200, blank=True, null=True)
+   
+
 
     def clean(self):
     # Validate fields depending on transaction type

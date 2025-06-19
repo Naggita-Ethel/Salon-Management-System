@@ -1,5 +1,5 @@
 from django import forms
-from .models import Branch, Business, User, UserRole
+from .models import Branch, Business, Transaction, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -152,3 +152,16 @@ class EditEmployeeForm(forms.Form):
         if User.objects.filter(email=email).exclude(id=user_id).exists():
             raise ValidationError("This email is already in use.")
         return email
+
+
+class TransactionForm(forms.ModelForm):
+    class Meta:
+        model = Transaction
+        fields = [
+            'transaction_type', 'branch', 'party', 'expense_category', 'expense_name',
+            'items', 'quantity', 'amount', 'payment_method', 'is_paid'
+        ]
+        widgets = {
+            'items': forms.CheckboxSelectMultiple,
+            'transaction_type': forms.Select(attrs={'onchange': 'this.form.submit();'}),
+        }

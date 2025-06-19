@@ -3,8 +3,8 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from .models import Branch, BranchEmployee, Business, Item, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm
+from .models import Branch, BranchEmployee, Business, Item, Transaction, User, UserRole
+from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -56,9 +56,50 @@ def register_business(request):
 
     return render(request, 'accounts/register.html', {'form': form})
 
-@login_required(login_url='login')
-def expenses_view(request):
-    return render(request, 'home/expenses.html')
+@login_required
+def expense_list_view(request):
+    branches = Branch.objects.all()
+    selected_branch = None
+    expenses = Transaction.objects.none()
+
+    if branches.exists():
+        selected_branch_id = request.GET.get('branch')
+
+        if selected_branch_id:
+            selected_branch = get_object_or_404(Branch, id=selected_branch_id)
+        else:
+            selected_branch = branches.first()  # default to first branch
+
+        expenses = Transaction.objects.filter(branch=selected_branch, transaction_type='expense')
+
+    return render(request, 'home/expenses.html', {
+        'branches': branches,
+        'selected_branch': selected_branch,
+        'expenses': expenses,
+    })
+
+
+@login_required
+def add_expense_view(request):
+    business = get_user_business(request.user)
+    branches = Branch.objects.filter(business=business)
+
+    if request.method == 'POST':
+        form = TransactionForm(request.POST)
+        if form.is_valid():
+            transaction = form.save(commit=False)
+            transaction.transaction_type = 'expense'
+            transaction.created_by = request.user
+            transaction.save()
+            form.save_m2m()  # for saving ManyToMany fields like items
+            return redirect('expenses')
+    else:
+        form = TransactionForm(initial={'transaction_type': 'expense'})
+
+    return render(request, 'home/add_expense.html', {
+        'form': form,
+        'branches': branches,
+    })
 
 @login_required(login_url='login')
 def settings_view(request):
