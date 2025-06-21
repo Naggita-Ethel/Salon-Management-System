@@ -2,12 +2,13 @@ from datetime import timezone
 from decimal import Decimal, InvalidOperation
 from pyexpat.errors import messages
 import uuid
+from django.forms import inlineformset_factory
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from .models import Branch, BranchEmployee, Item, Party, Transaction, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemFormSet
+from .models import Branch, BranchEmployee, BusinessSettings, Item, Party, Transaction, TransactionItem, User, UserRole
+from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -15,82 +16,235 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth import logout
 from django.contrib.auth import authenticate, login
 import logging
+from django.db import transaction as db_transaction
 from django.core.paginator import Paginator
+from xhtml2pdf import pisa # If you choose xhtml2pdf
 
 from core import forms
 
+# In your views.py
+
+from django.http import HttpResponse
+from django.template.loader import get_template
+import io
+from xhtml2pdf import pisa # If you choose xhtml2pdf
+
+@login_required
+def receipt_view(request, transaction_id):
+    transaction = get_object_or_404(Transaction, id=transaction_id, branch__business=request.user.business)
+    
+    context = {
+        'transaction': transaction,
+        'business': request.user.business,
+        'branch': transaction.branch,
+        # Add any other data needed for the receipt
+    }
+    
+    # Render for preview
+    if 'preview' in request.GET:
+        return render(request, 'home/receipt_template.html', context)
+    
+    # Generate PDF for download
+    template = get_template('home/receipt_template.html')
+    html = template.render(context)
+    result = io.BytesIO()
+    pdf = pisa.pisaDocument(io.BytesIO(html.encode("UTF-8")), result)
+    
+    if not pdf.err:
+        response = HttpResponse(result.getvalue(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="receipt_{transaction.id}.pdf"'
+        return response
+    
+    return HttpResponse('Error generating PDF', status=500)
+
+
+
+TransactionItemFormSet = inlineformset_factory(Transaction, TransactionItem, form=TransactionItemForm, extra=1, can_delete=True)
+
+
+@login_required
 def get_items_by_category(request):
     category = request.GET.get('category')
-    items = Item.objects.filter(category=category).values('id', 'name')
+    # Filter by business of the current user
+    items = Item.objects.filter(business=request.user.business, type=category).values('id', 'name', 'selling_price')
     return JsonResponse(list(items), safe=False)
+
+@login_required
+def get_employees_by_branch(request):
+    branch_id = request.GET.get('branch_id')
+    employees = BranchEmployee.objects.filter(
+        branch_id=branch_id,
+        branch__business=request.user.business,
+        status='active'
+    ).select_related('user').values('id', 'user__full_name', 'user__username')
+    
+    # Format for display: use full_name if available, else username
+    formatted_employees = [{'id': emp['id'], 'name': emp['user__full_name'] or emp['user__username']} for emp in employees]
+    return JsonResponse(formatted_employees, safe=False)
 
 
 @login_required
 def revenue_create_view(request):
+    business_settings = BusinessSettings.objects.get_or_create(business=request.user.business)[0]
+
     if request.method == 'POST':
-        form = TransactionForm(request.POST)
-        formset = TransactionItemFormSet(request.POST)
+        form = TransactionForm(request.POST, user=request.user)
+        # No need to pass branch_id here anymore via form_kwargs
+        formset = TransactionItemFormSet(request.POST, prefix='items')
 
         if form.is_valid() and formset.is_valid():
-            # Handle customer field logic
-            customer_choice = form.cleaned_data.get('customer_field')
-            customer = None
-
-            if customer_choice == TransactionForm.WALKIN:
+            with db_transaction.atomic():
                 customer = None
-            elif customer_choice == TransactionForm.NEW_CUSTOMER:
-                full_name = form.cleaned_data.get('new_customer_name')
-                phone = form.cleaned_data.get('new_customer_phone')
-                address = form.cleaned_data.get('new_customer_address')
-                gender = form.cleaned_data.get('new_customer_gender')
+                customer_selection_type = form.cleaned_data.get('customer_selection_type')
+                branch = form.cleaned_data.get('branch') # Get the selected branch object
 
-                if full_name:
-                    customer = Party.objects.create(
-                        type='customer',
-                        full_name=full_name,
-                        phone=phone,
-                        branch=form.cleaned_data['branch'],
-                        business=request.user.business,
-                    )
-            else:
-                # Existing customer
-                try:
-                    customer = Party.objects.get(id=customer_choice, type='customer')
-                except Party.DoesNotExist:
-                    customer = None
+                if customer_selection_type == 'new':
+                    full_name = form.cleaned_data.get('new_customer_name')
+                    phone = form.cleaned_data.get('new_customer_phone')
+                    email = form.cleaned_data.get('new_customer_email')
+                    address = form.cleaned_data.get('new_customer_address')
+                    gender = form.cleaned_data.get('new_customer_gender')
 
-            # Save Transaction
-            transaction = form.save(commit=False)
-            transaction.transaction_type = 'revenue'
-            transaction.party = customer
-            transaction.created_by = request.user
+                    if phone:
+                        existing_party = Party.objects.filter(business=request.user.business, type='customer', phone=phone).first()
+                        if existing_party:
+                            customer = existing_party
+                            messages.info(request, f"Customer with phone {phone} already exists. Using existing record.")
+                            customer.full_name = full_name # Update name
+                            customer.email = email # Update email
+                            customer.address = address # Update address
+                            customer.gender = gender # Update gender
+                            customer.save()
+                        else:
+                            customer = Party.objects.create(
+                                type='customer',
+                                full_name=full_name,
+                                phone=phone,
+                                email=email,
+                                address=address,
+                                gender=gender,
+                                branch=branch,
+                                business=request.user.business,
+                            )
+                    else:
+                        customer = Party.objects.create(
+                                type='customer',
+                                full_name=full_name + " (Anonymous Walk-in)",
+                                branch=branch,
+                                business=request.user.business,
+                            )
+                        messages.warning(request, "No phone number provided for new customer. Loyalty points cannot be tracked for this individual.")
+                else:
+                    customer = form.cleaned_data.get('existing_customer')
+                    if not customer:
+                        messages.error(request, 'Please select an existing customer.')
+                        # Re-render with errors
+                        all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
+                        item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
+                        context = {
+                            'form': form,
+                            'formset': formset,
+                            'business_settings': business_settings,
+                            'item_prices_json': item_prices_json
+                        }
+                        return render(request, 'home/add_revenue.html', context)
 
-            # Calculate total amount
-            total_amount = 0
-            for item_form in formset:
-                if item_form.cleaned_data and not item_form.cleaned_data.get('DELETE', False):
-                    item = item_form.cleaned_data['item']
-                    quantity = item_form.cleaned_data['quantity']
-                    total_amount += item.selling_price * quantity
-            transaction.amount = total_amount
-            transaction.save()
 
-            formset.instance = transaction
-            formset.save()
+                transaction = form.save(commit=False)
+                transaction.transaction_type = 'revenue'
+                transaction.party = customer
+                transaction.created_by = request.user
+                
+                total_amount = 0
+                transaction_items_to_save = []
+                for item_form in formset:
+                    if item_form.cleaned_data.get('DELETE', False):
+                        if item_form.instance.pk: # Only delete if it's an existing item
+                            item_form.instance.delete()
+                        continue
+                    
+                    if item_form.is_valid():
+                        item = item_form.cleaned_data['item']
+                        quantity = item_form.cleaned_data['quantity']
+                        total_amount += item.selling_price * quantity
+                        transaction_item = item_form.save(commit=False)
+                        transaction_items_to_save.append(transaction_item)
+                    elif item_form.errors:
+                        print("Individual Item Form Errors:", item_form.errors)
+                        messages.error(request, "Error in one or more item entries.")
+                        all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
+                        item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
+                        context = {
+                            'form': form,
+                            'formset': formset,
+                            'business_settings': business_settings,
+                            'item_prices_json': item_prices_json
+                        }
+                        return render(request, 'home/add_revenue.html', context)
 
-            messages.success(request, 'Customer purchase recorded successfully.')
-            return redirect('revenue_list')
+                if not transaction_items_to_save and not formset.deleted_forms:
+                    messages.error(request, 'No items were added to the purchase.')
+                    all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
+                    item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
+                    context = {
+                        'form': form,
+                        'formset': formset,
+                        'business_settings': business_settings,
+                        'item_prices_json': item_prices_json
+                    }
+                    return render(request, 'home/add_revenue.html', context)
+
+                coupon = form.cleaned_data.get('coupon')
+                if coupon:
+                    is_valid, msg = coupon.is_valid(transaction_total=total_amount)
+                    if is_valid:
+                        transaction.discount_amount = coupon.calculate_discount(total_amount)
+                        total_amount -= transaction.discount_amount
+                        coupon.times_used += 1
+                        coupon.save()
+                    else:
+                        messages.warning(request, f"Coupon '{coupon.code}' could not be applied: {msg}")
+                        transaction.coupon = None
+
+                transaction.amount = total_amount
+
+                if transaction.party and transaction.party.phone:
+                    points_earned = int(total_amount / float(business_settings.loyalty_points_per_ugx_spent))
+                    transaction.loyalty_points_earned = points_earned
+                    transaction.party.loyalty_points += points_earned
+                    transaction.party.save()
+                else:
+                    transaction.loyalty_points_earned = 0
+                    messages.info(request, "No loyalty points earned for this transaction as customer details are incomplete.")
+
+                transaction.save()
+
+                for tx_item in transaction_items_to_save:
+                    tx_item.transaction = transaction
+                    tx_item.save()
+
+                messages.success(request, 'Customer purchase recorded successfully.')
+                return redirect('receipt_detail', transaction_id=transaction.id)
+
         else:
             messages.error(request, 'There was an error saving the form. Please check and try again.')
-    else:
-        form = TransactionForm()
-        formset = TransactionItemFormSet()
+            print("Main Form Errors:", form.errors)
+            print("Formset Errors:", formset.errors)
+    else: # GET request
+        form = TransactionForm(user=request.user)
+        # No form_kwargs for branch_id here anymore
+        formset = TransactionItemFormSet(prefix='items')
+    
+    all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
+    item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
 
-    return render(request, 'home/add_revenue.html', {
+    context = {
         'form': form,
         'formset': formset,
-    })
-
+        'business_settings': business_settings,
+        'item_prices_json': item_prices_json,
+    }
+    return render(request, 'home/add_revenue.html', context)
 
 @login_required
 def revenue_list_view(request):

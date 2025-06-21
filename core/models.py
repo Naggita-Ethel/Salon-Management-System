@@ -4,7 +4,7 @@ from django.contrib.auth.models import AbstractUser
 from django.db import models
 from django.forms import ValidationError
 from django.utils import timezone
-from django.core.validators import MinValueValidator
+from django.core.validators import MinValueValidator, MaxValueValidator
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -100,13 +100,14 @@ class Party(models.Model):
     type = models.CharField(max_length=10, choices=TYPE_CHOICES)
     branch = models.ForeignKey('Branch', on_delete=models.CASCADE, null=True, blank=True)  # Optional if supplier may not be branch-specific
     full_name = models.CharField(max_length=100)
-    phone = models.CharField(max_length=15)
+    phone = models.CharField(max_length=15, blank=True, null=True) # Made phone optional for generic walk-in
     email = models.EmailField(blank=True, null=True)
     address = models.TextField(blank=True, null=True)
     company = models.CharField(max_length=150, blank=True, null=True)  # Used mainly for suppliers
     loyalty_points = models.IntegerField(default=0)  # Used mainly for customers
     created_at = models.DateTimeField(auto_now_add=True)
     business = models.ForeignKey('Business', on_delete=models.CASCADE, related_name='parties')
+    
 
     def __str__(self):
         if self.type == 'supplier' and self.company:
@@ -142,6 +143,7 @@ class Transaction(models.Model):
     # Coupon for revenue transactions
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     coupon = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True)
+    serviced_by = models.ForeignKey('BranchEmployee', on_delete=models.SET_NULL, null=True, blank=True, related_name='serviced_transactions')
 
 
     loyalty_points_earned = models.IntegerField(default=0)
@@ -183,6 +185,7 @@ class TransactionItem(models.Model):
     transaction = models.ForeignKey('Transaction', on_delete=models.CASCADE, related_name='transaction_items')
     item = models.ForeignKey('Item', on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
+    employee = models.ForeignKey('BranchEmployee', on_delete=models.SET_NULL, null=True, blank=True, related_name='item_sales')
 
     def total_price(self):
         return self.quantity * self.item.selling_price
@@ -205,28 +208,92 @@ class ExpenseCategory(models.Model):
 class Coupon(models.Model):
     branch = models.ForeignKey('Branch', on_delete=models.CASCADE, related_name='coupons', null=True, blank=True)
     code = models.CharField(max_length=50, unique=True)
-    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)  # fixed UGX
-    discount_percent = models.FloatField(null=True, blank=True)  # % discount
+    discount_amount = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True)
+    discount_percent = models.FloatField(null=True, blank=True)
     valid_from = models.DateTimeField()
     valid_until = models.DateTimeField()
-    min_spend = models.DecimalField(max_digits=10, decimal_places=2, default=0)  # optional
-    applicable_items = models.ManyToManyField('Item', blank=True)  # limit to items
+    min_spend = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    applicable_items = models.ManyToManyField('Item', blank=True)
     is_active = models.BooleanField(default=True)
-    usage_limit = models.IntegerField(null=True, blank=True)  # optional
+    usage_limit = models.IntegerField(null=True, blank=True)
     
+    # New: To track how many times this coupon has been used
+    times_used = models.IntegerField(default=0) 
 
     def __str__(self):
         return self.code
 
+    def clean(self):
+        if self.discount_amount is None and self.discount_percent is None:
+            raise ValidationError("Either discount amount or discount percent must be set.")
+        if self.discount_amount is not None and self.discount_percent is not None:
+            raise ValidationError("Cannot set both discount amount and discount percent. Choose one.")
+        if self.discount_percent is not None and (self.discount_percent < 0 or self.discount_percent > 100):
+            raise ValidationError("Discount percent must be between 0 and 100.")
+
+    def is_valid(self, transaction_total=0):
+        now = timezone.now()
+        if not self.is_active:
+            return False, "Coupon is not active."
+        if now < self.valid_from:
+            return False, "Coupon is not yet valid."
+        if now > self.valid_until:
+            return False, "Coupon has expired."
+        if self.min_spend > transaction_total:
+            return False, f"Minimum spend of UGX {self.min_spend} is required."
+        if self.usage_limit is not None and self.times_used >= self.usage_limit:
+            return False, "Coupon has reached its usage limit."
+        return True, "Coupon is valid."
+
+    def calculate_discount(self, total_amount):
+        if self.discount_amount:
+            return min(self.discount_amount, total_amount) # Ensure discount doesn't exceed total
+        elif self.discount_percent:
+            return total_amount * (self.discount_percent / 100)
+        return 0
+
+
 
 class BusinessSettings(models.Model):
-    business = models.OneToOneField('Business', on_delete=models.CASCADE)
-    loyalty_points_per_visit = models.IntegerField(default=1)
-    loyalty_points_required_for_discount = models.IntegerField(default=10)
-    loyalty_discount_percent = models.FloatField(default=5.0)
-    coupon_min_spend = models.DecimalField(max_digits=12, decimal_places=2, default=200000)
-    coupon_discount_percent = models.FloatField(default=5.0)
-    # add more fields as needed
+    business = models.OneToOneField(Business, on_delete=models.CASCADE, related_name='settings')
+    
+    # Loyalty Settings (assuming you want to track these per business)
+    # Loyalty points earned per X amount spent
+    loyalty_points_per_ugx_spent = models.DecimalField(
+        max_digits=10, decimal_places=2, default=100.00,
+        help_text="Amount in UGX a customer needs to spend to earn 1 loyalty point."
+    )
+    # Loyalty points required to qualify for a discount
+    loyalty_points_required_for_discount = models.IntegerField(
+        default=500,
+        help_text="Number of loyalty points required for a customer to qualify for a discount."
+    )
+    # Discount percentage given when loyalty points are redeemed
+    loyalty_discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=5.00,
+        validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
+        help_text="Percentage discount applied when loyalty points are redeemed (e.g., 5 for 5%)."
+    )
+
+    # Coupon Settings (general settings for how coupons might behave)
+    # Minimum spend for a coupon to be applicable
+    coupon_min_spend = models.DecimalField(
+        max_digits=10, decimal_places=2, default=0.00,
+        help_text="Minimum transaction amount required for any coupon to be applied (0 for no minimum)."
+    )
+    # Default discount percentage for newly created coupons (if not specified)
+    coupon_discount_percent = models.DecimalField(
+        max_digits=5, decimal_places=2, default=10.00,
+        validators=[MinValueValidator(0.0), MaxValueValidator(100.0)],
+        help_text="Default percentage discount for coupons if not overridden by specific coupon settings."
+    )
+    
+    # You had 'loyalty_points_per_visit' in the error. If you actually want this, add it:
+    # loyalty_points_per_visit = models.IntegerField(default=5, help_text="Points earned per visit, regardless of spend.")
+
+
+    class Meta:
+        verbose_name_plural = "Business Settings"
 
     def __str__(self):
         return f"Settings for {self.business.name}"

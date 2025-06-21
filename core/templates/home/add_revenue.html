@@ -14,7 +14,7 @@
                 </a>
             </li>
             <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Transactions</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'employees' %}">Revenue</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'revenue_list' %}">Revenue</a></li> {# Corrected this URL to revenue_list #}
             <li class="breadcrumb-item active" aria-current="page">Add Revenue</li>
         </ol>
     </nav>
@@ -29,29 +29,45 @@
 <form method="post" novalidate>
     {% csrf_token %}
     {{ form.non_field_errors }}
+    
     <div class="mb-3">
         {{ form.branch.label_tag }} {{ form.branch }}
         {{ form.branch.errors }}
     </div>
+
     <div class="mb-3">
-    <label for="id_customer_selector">Customer</label>
-    {{ form.customer_field }}
+        {{ form.customer_selection_type.label_tag }} {{ form.customer_selection_type }}
+        {{ form.customer_selection_type.errors }}
     </div>
 
-    <div id="new_customer_fields" style="display: none;">
+    <div id="existing_customer_fields" class="mb-3" style="display: none;">
+        {{ form.existing_customer.label_tag }} {{ form.existing_customer }}
+        {{ form.existing_customer.errors }}
+    </div>
+
+    <div id="new_customer_fields" class="mb-3"> {# Initially visible for new walk-ins #}
+        <h4>New Customer Details (or update existing)</h4>
         <div class="mb-3">
-            <label>Full Name</label>
-            {{ form.new_customer_name }}
+            {{ form.new_customer_name.label_tag }} {{ form.new_customer_name }}
+            {{ form.new_customer_name.errors }}
         </div>
         <div class="mb-3">
-            <label>Phone</label>
-            {{ form.new_customer_phone }}
+            {{ form.new_customer_phone.label_tag }} {{ form.new_customer_phone }}
+            {{ form.new_customer_phone.errors }}
+            <small class="form-text text-muted">Required to track loyalty points.</small>
         </div>
         <div class="mb-3">
-            <label>Address</label>
-            {{ form.new_customer_address }}
+            {{ form.new_customer_email.label_tag }} {{ form.new_customer_email }}
+            {{ form.new_customer_email.errors }}
         </div>
-    
+        <div class="mb-3">
+            {{ form.new_customer_address.label_tag }} {{ form.new_customer_address }}
+            {{ form.new_customer_address.errors }}
+        </div>
+        <div class="mb-3">
+            {{ form.new_customer_gender.label_tag }} {{ form.new_customer_gender }}
+            {{ form.new_customer_gender.errors }}
+        </div>
     </div>
 
     <div class="mb-3">
@@ -63,70 +79,85 @@
         {{ form.is_paid.errors }}
     </div>
 
+    <div class="mb-3">
+        {{ form.coupon_code.label_tag }} {{ form.coupon_code }}
+        {{ form.coupon_code.errors }}
+    </div>
+
+    <div class="mb-3">
+        {{ form.serviced_by.label_tag }} {{ form.serviced_by }}
+        {{ form.serviced_by.errors }}
+    </div>
+
     <h4>Items Purchased</h4>
 
-<!-- Item category selection -->
-<div class="mb-3">
-    <label>Item Category</label>
-    <select id="item_category" class="form-control">
-        <option value="">-- Select Category --</option>
-        <option value="product">Product</option>
-        <option value="service">Service</option>
-    </select>
-</div>
-
-<!-- Existing item dropdown (will be populated via JS) -->
-<div class="mb-3" id="existing_item_section" style="display:none;">
-    <label>Select Item</label>
-    <select name="item_dropdown" id="item_dropdown" class="form-control">
-        <option value="">-- Select Item --</option>
-        <!-- Options will be injected via JavaScript -->
-    </select>
-</div>
-
-<!-- New item creation fields -->
-<div id="new_item_fields" style="display: none;">
     <div class="mb-3">
-        <label>New Item Name</label>
-        <input type="text" name="new_item_name" class="form-control">
+        <label>Item Category</label>
+        <select id="item_category" class="form-control">
+            <option value="">-- Select Category --</option>
+            <option value="product">Product</option>
+            <option value="service">Service</option>
+        </select>
     </div>
+
+    <div class="mb-3" id="existing_item_section" style="display:none;">
+        <label>Select Item</label>
+        <select name="item_dropdown" id="item_dropdown" class="form-control">
+            <option value="">-- Select Item --</option>
+        </select>
+    </div>
+
+    <div id="new_item_fields" style="display: none;">
+        <div class="mb-3">
+            <label>New Item Name</label>
+            <input type="text" name="new_item_name" class="form-control">
+        </div>
+        <div class="mb-3">
+            <label>Selling Price</label>
+            <input type="number" name="new_item_price" class="form-control" step="0.01">
+        </div>
+    </div>
+
+    {{ formset.management_form }}
+    <table class="table" id="transaction-items-table">
+        <thead>
+            <tr><th>Item</th><th>Quantity</th><th>Serviced By</th><th>Remove</th></tr>
+        </thead>
+        <tbody>
+            {% for fs_form in formset %}
+            <tr class="formset-row">
+                <td>{{ fs_form.item }}</td>
+                <td>{{ fs_form.quantity }}</td>
+                <td>{{ fs_form.employee }}</td> {# This is the new column for employee per item #}
+                <td>
+                    {% if fs_form.instance.pk %}
+                        {{ fs_form.DELETE }}
+                    {% else %}
+                        <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
+                    {% endif %}
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <button type="button" id="add-item-button" class="btn btn-secondary mt-2">Add Another Item</button>
+
     <div class="mb-3">
-        <label>Selling Price</label>
-        <input type="number" name="new_item_price" class="form-control" step="0.01">
+        <label>Total Amount</label>
+        <input type="text" id="total_amount_display" class="form-control" readonly>
+        {# You might have a hidden field for the actual amount submission if not calculated client-side #}
     </div>
-</div>
-
-<!-- Formset for items -->
-{{ formset.management_form }}
-<table class="table">
-    <thead>
-        <tr><th>Item</th><th>Quantity</th><th>Remove</th></tr>
-    </thead>
-    <tbody>
-        {% for form in formset.forms %}
-        <tr>
-            <td>{{ form.item }}</td>
-            <td>{{ form.quantity }}</td>
-            <td>
-                {% if form.instance.pk %}
-                    {{ form.DELETE }}
-                {% endif %}
-            </td>
-        </tr>
-        {% endfor %}
-    </tbody>
-</table>
-
-<!-- Total amount display -->
-<div class="mb-3">
-    <label>Total Amount</label>
-    {{ form.amount }}
-</div>
 
     <button type="submit" class="btn btn-primary">Save Purchase</button>
 </form>
+
+
 {% endblock %}
 
 {% block javascripts %}
+    {# Place the itemPrices script BEFORE your revenue.js script #}
+    <script>
+        const itemPrices = {{ item_prices_json|safe }};
+    </script>
     <script src="{% static 'assets/js/revenue.js' %}"></script>
 {% endblock javascripts %}

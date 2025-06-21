@@ -70,9 +70,15 @@ class TransactionAdmin(admin.ModelAdmin):
 
 @admin.register(BusinessSettings)
 class BusinessSettingsAdmin(admin.ModelAdmin):
+    # Ensure these match the fields in your BusinessSettings model
     list_display = (
-        'business', 'loyalty_points_per_visit', 'loyalty_points_required_for_discount',
-        'loyalty_discount_percent', 'coupon_min_spend', 'coupon_discount_percent'
+        'business',
+        'loyalty_points_per_ugx_spent', # This field name must exist in the model
+        'loyalty_points_required_for_discount', # This field name must exist in the model
+        'loyalty_discount_percent', # This field name must exist in the model
+        'coupon_min_spend', # This field name must exist in the model
+        'coupon_discount_percent', # This field name must exist in the model
     )
-    raw_id_fields = ('business',)
+    list_filter = ('business',)
+    search_fields = ('business__name',) # Search by business name
 
