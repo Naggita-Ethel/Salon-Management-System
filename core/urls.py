@@ -1,17 +1,16 @@
 from django.urls import path
-from .views import add_employee_view, add_expense_view, add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, pagelock_view, register_business, services_products_view, settings_view, tables_view
+from .views import add_employee_view, add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, get_items_by_category,  pagelock_view, register_business, revenue_create_view, revenue_list_view, services_products_view, settings_view
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
-
+    path('revenue/', revenue_list_view, name='revenue_list'),
+    path('get-items-by-category/', get_items_by_category, name='get_items_by_category'),
+    path('revenue/add/', revenue_create_view, name='revenue_create'),
     path('', auth_views.LoginView.as_view(template_name='accounts/login.html'), name='login'),
     path('forgot-password/', forgot_password, name='forgot-password'),
     path('business/register/', register_business, name='register-business'),
     path('dashboard/', dashboard_view, name='dashboard'), 
     path('expenses/', expense_list_view, name='expenses'),
-    path('expenses/add/', add_expense_view, name='add-expense'),
-    # path('expenses/edit/<int:pk>/',edit_expense_view, name='edit-expense'),
-    # path('expenses/delete/<int:pk>/', delete_expense_view, name='delete-expense'),
     path('settings/', settings_view, name='settings'),
     path('pagelock/', pagelock_view, name='pagelock'),
     path('branch/', branch_view, name='branch'),

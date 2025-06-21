@@ -102,15 +102,16 @@ class Party(models.Model):
     full_name = models.CharField(max_length=100)
     phone = models.CharField(max_length=15)
     email = models.EmailField(blank=True, null=True)
+    address = models.TextField(blank=True, null=True)
     company = models.CharField(max_length=150, blank=True, null=True)  # Used mainly for suppliers
     loyalty_points = models.IntegerField(default=0)  # Used mainly for customers
     created_at = models.DateTimeField(auto_now_add=True)
+    business = models.ForeignKey('Business', on_delete=models.CASCADE, related_name='parties')
 
     def __str__(self):
         if self.type == 'supplier' and self.company:
             return f"{self.full_name} ({self.company})"
         return self.full_name
-
 
 
 class Transaction(models.Model):
@@ -142,15 +143,13 @@ class Transaction(models.Model):
     discount_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
     coupon = models.ForeignKey('Coupon', on_delete=models.SET_NULL, null=True, blank=True)
 
-    # New fields
-    items = models.ManyToManyField('Item', blank=True)  # many items per transaction
+
     loyalty_points_earned = models.IntegerField(default=0)
     loyalty_points_redeemed = models.IntegerField(default=0)
 
     created_at = models.DateTimeField(auto_now_add=True)
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
-    quantity = models.PositiveIntegerField(default=1)
     expense_name = models.CharField(max_length=200, blank=True, null=True)
    
 
@@ -178,6 +177,15 @@ class Transaction(models.Model):
 
     def __str__(self):
         return f"{self.transaction_type} - {self.amount} at {self.branch}"
+    
+# Associates each transaction with individual items and quantity.
+class TransactionItem(models.Model):
+    transaction = models.ForeignKey('Transaction', on_delete=models.CASCADE, related_name='transaction_items')
+    item = models.ForeignKey('Item', on_delete=models.CASCADE)
+    quantity = models.PositiveIntegerField(default=1)
+
+    def total_price(self):
+        return self.quantity * self.item.selling_price
 
 
 

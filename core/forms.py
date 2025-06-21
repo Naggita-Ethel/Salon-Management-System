@@ -1,9 +1,64 @@
 from django import forms
-from .models import Branch, Business, Transaction, User, UserRole
+from .models import Branch, Business, Party, Transaction, TransactionItem, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
+class TransactionForm(forms.ModelForm):
+    NEW_CUSTOMER = 'new_customer'
+    WALKIN = 'walkin'
+
+    customer_field = forms.ChoiceField(
+        label='Customer',
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control', 'id': 'id_customer_selector'})
+    )
+
+    new_customer_name = forms.CharField(required=False)
+    new_customer_phone = forms.CharField(required=False)
+    new_customer_address = forms.CharField(required=False)
+    new_customer_gender = forms.ChoiceField(
+        required=False,
+        choices=[('male', 'Male'), ('female', 'Female'), ('other', 'Other')]
+    )
+
+    amount = forms.DecimalField(required=False, disabled=True)
+
+    class Meta:
+        model = Transaction
+        fields = ['branch', 'payment_method', 'is_paid']
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        # Dynamically load customer choices
+        customer_choices = [
+            (self.WALKIN, 'Walk-in'),
+            (self.NEW_CUSTOMER, 'Create New Customer'),
+        ] + [
+            (str(p.id), p.full_name)
+            for p in Party.objects.filter(type='customer')
+        ]
+
+        self.fields['customer_field'].choices = customer_choices
+
+
+class TransactionItemForm(forms.ModelForm):
+    class Meta:
+        model = TransactionItem
+        fields = ['item', 'quantity']
+        widgets = {
+            'item': forms.Select(attrs={'class': 'form-control'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control', 'min': '1'}),
+        }
+
+TransactionItemFormSet = forms.inlineformset_factory(
+    Transaction,
+    TransactionItem,
+    form=TransactionItemForm,
+    extra=1,
+    can_delete=True,
+)
 
 class BusinessRegisterForm(UserCreationForm):
     owner_name = forms.CharField(max_length=150, label="Owner Name")
@@ -153,15 +208,3 @@ class EditEmployeeForm(forms.Form):
             raise ValidationError("This email is already in use.")
         return email
 
-
-class TransactionForm(forms.ModelForm):
-    class Meta:
-        model = Transaction
-        fields = [
-            'transaction_type', 'branch', 'party', 'expense_category', 'expense_name',
-            'items', 'quantity', 'amount', 'payment_method', 'is_paid'
-        ]
-        widgets = {
-            'items': forms.CheckboxSelectMultiple,
-            'transaction_type': forms.Select(attrs={'onchange': 'this.form.submit();'}),
-        }

@@ -1,0 +1,132 @@
+{% extends "layouts/base.html" %}
+{% load static %}
+{% block title %}Add Customer Purchase{% endblock %}
+
+
+{% block content %}
+
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Transactions</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'employees' %}">Revenue</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Add Revenue</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Add Customer Purchase</h1>
+            <p class="mb-0">Add a new customer purchase.</p>
+        </div>
+    </div>
+</div>
+
+<form method="post" novalidate>
+    {% csrf_token %}
+    {{ form.non_field_errors }}
+    <div class="mb-3">
+        {{ form.branch.label_tag }} {{ form.branch }}
+        {{ form.branch.errors }}
+    </div>
+    <div class="mb-3">
+    <label for="id_customer_selector">Customer</label>
+    {{ form.customer_field }}
+    </div>
+
+    <div id="new_customer_fields" style="display: none;">
+        <div class="mb-3">
+            <label>Full Name</label>
+            {{ form.new_customer_name }}
+        </div>
+        <div class="mb-3">
+            <label>Phone</label>
+            {{ form.new_customer_phone }}
+        </div>
+        <div class="mb-3">
+            <label>Address</label>
+            {{ form.new_customer_address }}
+        </div>
+    
+    </div>
+
+    <div class="mb-3">
+        {{ form.payment_method.label_tag }} {{ form.payment_method }}
+        {{ form.payment_method.errors }}
+    </div>
+    <div class="mb-3 form-check">
+        {{ form.is_paid }} {{ form.is_paid.label_tag }}
+        {{ form.is_paid.errors }}
+    </div>
+
+    <h4>Items Purchased</h4>
+
+<!-- Item category selection -->
+<div class="mb-3">
+    <label>Item Category</label>
+    <select id="item_category" class="form-control">
+        <option value="">-- Select Category --</option>
+        <option value="product">Product</option>
+        <option value="service">Service</option>
+    </select>
+</div>
+
+<!-- Existing item dropdown (will be populated via JS) -->
+<div class="mb-3" id="existing_item_section" style="display:none;">
+    <label>Select Item</label>
+    <select name="item_dropdown" id="item_dropdown" class="form-control">
+        <option value="">-- Select Item --</option>
+        <!-- Options will be injected via JavaScript -->
+    </select>
+</div>
+
+<!-- New item creation fields -->
+<div id="new_item_fields" style="display: none;">
+    <div class="mb-3">
+        <label>New Item Name</label>
+        <input type="text" name="new_item_name" class="form-control">
+    </div>
+    <div class="mb-3">
+        <label>Selling Price</label>
+        <input type="number" name="new_item_price" class="form-control" step="0.01">
+    </div>
+</div>
+
+<!-- Formset for items -->
+{{ formset.management_form }}
+<table class="table">
+    <thead>
+        <tr><th>Item</th><th>Quantity</th><th>Remove</th></tr>
+    </thead>
+    <tbody>
+        {% for form in formset.forms %}
+        <tr>
+            <td>{{ form.item }}</td>
+            <td>{{ form.quantity }}</td>
+            <td>
+                {% if form.instance.pk %}
+                    {{ form.DELETE }}
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+
+<!-- Total amount display -->
+<div class="mb-3">
+    <label>Total Amount</label>
+    {{ form.amount }}
+</div>
+
+    <button type="submit" class="btn btn-primary">Save Purchase</button>
+</form>
+{% endblock %}
+
+{% block javascripts %}
+    <script src="{% static 'assets/js/revenue.js' %}"></script>
+{% endblock javascripts %}

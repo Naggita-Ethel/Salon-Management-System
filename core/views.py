@@ -1,10 +1,13 @@
+from datetime import timezone
 from decimal import Decimal, InvalidOperation
+from pyexpat.errors import messages
+import uuid
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse_lazy
-from .models import Branch, BranchEmployee, Business, Item, Transaction, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm
+from .models import Branch, BranchEmployee, Item, Party, Transaction, User, UserRole
+from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemFormSet
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -12,9 +15,119 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth import logout
 from django.contrib.auth import authenticate, login
 import logging
+from django.core.paginator import Paginator
 
 from core import forms
 
+def get_items_by_category(request):
+    category = request.GET.get('category')
+    items = Item.objects.filter(category=category).values('id', 'name')
+    return JsonResponse(list(items), safe=False)
+
+
+@login_required
+def revenue_create_view(request):
+    if request.method == 'POST':
+        form = TransactionForm(request.POST)
+        formset = TransactionItemFormSet(request.POST)
+
+        if form.is_valid() and formset.is_valid():
+            # Handle customer field logic
+            customer_choice = form.cleaned_data.get('customer_field')
+            customer = None
+
+            if customer_choice == TransactionForm.WALKIN:
+                customer = None
+            elif customer_choice == TransactionForm.NEW_CUSTOMER:
+                full_name = form.cleaned_data.get('new_customer_name')
+                phone = form.cleaned_data.get('new_customer_phone')
+                address = form.cleaned_data.get('new_customer_address')
+                gender = form.cleaned_data.get('new_customer_gender')
+
+                if full_name:
+                    customer = Party.objects.create(
+                        type='customer',
+                        full_name=full_name,
+                        phone=phone,
+                        branch=form.cleaned_data['branch'],
+                        business=request.user.business,
+                    )
+            else:
+                # Existing customer
+                try:
+                    customer = Party.objects.get(id=customer_choice, type='customer')
+                except Party.DoesNotExist:
+                    customer = None
+
+            # Save Transaction
+            transaction = form.save(commit=False)
+            transaction.transaction_type = 'revenue'
+            transaction.party = customer
+            transaction.created_by = request.user
+
+            # Calculate total amount
+            total_amount = 0
+            for item_form in formset:
+                if item_form.cleaned_data and not item_form.cleaned_data.get('DELETE', False):
+                    item = item_form.cleaned_data['item']
+                    quantity = item_form.cleaned_data['quantity']
+                    total_amount += item.selling_price * quantity
+            transaction.amount = total_amount
+            transaction.save()
+
+            formset.instance = transaction
+            formset.save()
+
+            messages.success(request, 'Customer purchase recorded successfully.')
+            return redirect('revenue_list')
+        else:
+            messages.error(request, 'There was an error saving the form. Please check and try again.')
+    else:
+        form = TransactionForm()
+        formset = TransactionItemFormSet()
+
+    return render(request, 'home/add_revenue.html', {
+        'form': form,
+        'formset': formset,
+    })
+
+
+@login_required
+def revenue_list_view(request):
+    business = request.user.business
+    branches = Branch.objects.filter(business=business).order_by('name')  # or any ordering
+
+    if not branches.exists():
+        return render(request, 'home/revenue.html', {
+            'branches': [],
+            'selected_branch': None,
+            'transactions': None,
+        })
+
+    # Get selected branch from URL or use first available
+    selected_branch_id = request.GET.get('branch')
+    if selected_branch_id:
+        selected_branch = get_object_or_404(Branch, id=selected_branch_id, business=business)
+    else:
+        selected_branch = branches.first()
+
+    transactions_qs = (
+        Transaction.objects
+        .filter(branch=selected_branch, transaction_type='revenue')
+        .prefetch_related('transaction_items__item', 'party')
+        .order_by('-created_at')
+    )
+
+    paginator = Paginator(transactions_qs, 20)
+    page_number = request.GET.get('page')
+    transactions = paginator.get_page(page_number)
+
+    context = {
+        'branches': branches,
+        'selected_branch': selected_branch,
+        'transactions': transactions,
+    }
+    return render(request, 'home/revenue.html', context)
 
 def login_view(request):
     form = LoginForm(request.POST or None)
@@ -78,28 +191,6 @@ def expense_list_view(request):
         'expenses': expenses,
     })
 
-
-@login_required
-def add_expense_view(request):
-    business = get_user_business(request.user)
-    branches = Branch.objects.filter(business=business)
-
-    if request.method == 'POST':
-        form = TransactionForm(request.POST)
-        if form.is_valid():
-            transaction = form.save(commit=False)
-            transaction.transaction_type = 'expense'
-            transaction.created_by = request.user
-            transaction.save()
-            form.save_m2m()  # for saving ManyToMany fields like items
-            return redirect('expenses')
-    else:
-        form = TransactionForm(initial={'transaction_type': 'expense'})
-
-    return render(request, 'home/add_expense.html', {
-        'form': form,
-        'branches': branches,
-    })
 
 @login_required(login_url='login')
 def settings_view(request):
