@@ -1,163 +1,272 @@
 {% extends "layouts/base.html" %}
-{% load static %}
+{% load static widget_tweaks %} {# Make sure widget_tweaks is loaded #}
+
 {% block title %}Add Customer Purchase{% endblock %}
 
-
 {% block content %}
-
 <div class="py-4">
     <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
         <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
             <li class="breadcrumb-item">
                 <a href="#">
-                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 10 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                 </a>
             </li>
             <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Transactions</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'revenue_list' %}">Revenue</a></li> {# Corrected this URL to revenue_list #}
+            <li class="breadcrumb-item"><a href="{% url 'revenue_list' %}">Revenue</a></li>
             <li class="breadcrumb-item active" aria-current="page">Add Revenue</li>
         </ol>
     </nav>
     <div class="d-flex justify-content-between w-100 flex-wrap">
         <div class="mb-3 mb-lg-0">
             <h1 class="h4">Add Customer Purchase</h1>
-            <p class="mb-0">Add a new customer purchase.</p>
+            <p class="mb-0">Record a new customer purchase and manage discounts.</p>
         </div>
     </div>
 </div>
 
-<form method="post" novalidate>
-    {% csrf_token %}
-    {{ form.non_field_errors }}
-    
-    <div class="mb-3">
-        {{ form.branch.label_tag }} {{ form.branch }}
-        {{ form.branch.errors }}
-    </div>
-
-    <div class="mb-3">
-        {{ form.customer_selection_type.label_tag }} {{ form.customer_selection_type }}
-        {{ form.customer_selection_type.errors }}
-    </div>
-
-    <div id="existing_customer_fields" class="mb-3" style="display: none;">
-        {{ form.existing_customer.label_tag }} {{ form.existing_customer }}
-        {{ form.existing_customer.errors }}
-    </div>
-
-    <div id="new_customer_fields" class="mb-3"> {# Initially visible for new walk-ins #}
-        <h4>New Customer Details (or update existing)</h4>
-        <div class="mb-3">
-            {{ form.new_customer_name.label_tag }} {{ form.new_customer_name }}
-            {{ form.new_customer_name.errors }}
-        </div>
-        <div class="mb-3">
-            {{ form.new_customer_phone.label_tag }} {{ form.new_customer_phone }}
-            {{ form.new_customer_phone.errors }}
-            <small class="form-text text-muted">Required to track loyalty points.</small>
-        </div>
-        <div class="mb-3">
-            {{ form.new_customer_email.label_tag }} {{ form.new_customer_email }}
-            {{ form.new_customer_email.errors }}
-        </div>
-        <div class="mb-3">
-            {{ form.new_customer_address.label_tag }} {{ form.new_customer_address }}
-            {{ form.new_customer_address.errors }}
-        </div>
-        <div class="mb-3">
-            {{ form.new_customer_gender.label_tag }} {{ form.new_customer_gender }}
-            {{ form.new_customer_gender.errors }}
-        </div>
-    </div>
-
-    <div class="mb-3">
-        {{ form.payment_method.label_tag }} {{ form.payment_method }}
-        {{ form.payment_method.errors }}
-    </div>
-    <div class="mb-3 form-check">
-        {{ form.is_paid }} {{ form.is_paid.label_tag }}
-        {{ form.is_paid.errors }}
-    </div>
-
-    <div class="mb-3">
-        {{ form.coupon_code.label_tag }} {{ form.coupon_code }}
-        {{ form.coupon_code.errors }}
-    </div>
-
-    <div class="mb-3">
-        {{ form.serviced_by.label_tag }} {{ form.serviced_by }}
-        {{ form.serviced_by.errors }}
-    </div>
-
-    <h4>Items Purchased</h4>
-
-    <div class="mb-3">
-        <label>Item Category</label>
-        <select id="item_category" class="form-control">
-            <option value="">-- Select Category --</option>
-            <option value="product">Product</option>
-            <option value="service">Service</option>
-        </select>
-    </div>
-
-    <div class="mb-3" id="existing_item_section" style="display:none;">
-        <label>Select Item</label>
-        <select name="item_dropdown" id="item_dropdown" class="form-control">
-            <option value="">-- Select Item --</option>
-        </select>
-    </div>
-
-    <div id="new_item_fields" style="display: none;">
-        <div class="mb-3">
-            <label>New Item Name</label>
-            <input type="text" name="new_item_name" class="form-control">
-        </div>
-        <div class="mb-3">
-            <label>Selling Price</label>
-            <input type="number" name="new_item_price" class="form-control" step="0.01">
-        </div>
-    </div>
-
-    {{ formset.management_form }}
-    <table class="table" id="transaction-items-table">
-        <thead>
-            <tr><th>Item</th><th>Quantity</th><th>Serviced By</th><th>Remove</th></tr>
-        </thead>
-        <tbody>
-            {% for fs_form in formset %}
-            <tr class="formset-row">
-                <td>{{ fs_form.item }}</td>
-                <td>{{ fs_form.quantity }}</td>
-                <td>{{ fs_form.employee }}</td> {# This is the new column for employee per item #}
-                <td>
-                    {% if fs_form.instance.pk %}
-                        {{ fs_form.DELETE }}
-                    {% else %}
-                        <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
-                    {% endif %}
-                </td>
-            </tr>
+<div class="card border-0 shadow components-section">
+    <div class="card-body">
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
             {% endfor %}
-        </tbody>
-    </table>
-    <button type="button" id="add-item-button" class="btn btn-secondary mt-2">Add Another Item</button>
+        {% endif %}
 
-    <div class="mb-3">
-        <label>Total Amount</label>
-        <input type="text" id="total_amount_display" class="form-control" readonly>
-        {# You might have a hidden field for the actual amount submission if not calculated client-side #}
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {% for error in form.non_field_errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <h5 class="mb-4">Transaction Details</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.branch.id_for_label }}">Branch</label>
+                    {{ form.branch|attr:"class:form-control" }}
+                    {% if form.branch.errors %}
+                        <div class="text-danger">{{ form.branch.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.payment_method.id_for_label }}">Payment Method</label>
+                    {{ form.payment_method|attr:"class:form-control" }}
+                    {% if form.payment_method.errors %}
+                        <div class="text-danger">{{ form.payment_method.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12 mb-3">
+                    <div class="form-check">
+                        {{ form.is_paid|attr:"class:form-check-input" }}
+                        <label class="form-check-label" for="{{ form.is_paid.id_for_label }}">
+                            {{ form.is_paid.label }}
+                        </label>
+                        {% if form.is_paid.errors %}
+                            <div class="text-danger">{{ form.is_paid.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="mt-4 mb-3">Customer Information</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.customer_selection_type.id_for_label }}">Customer Type</label>
+                    {{ form.customer_selection_type|attr:"class:form-control" }}
+                    {% if form.customer_selection_type.errors %}
+                        <div class="text-danger">{{ form.customer_selection_type.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div id="existing_customer_fields" class="row">
+                <div class="col-12 mb-3">
+                    <label for="{{ form.existing_customer.id_for_label }}">Select Existing Customer</label>
+                    {{ form.existing_customer|attr:"class:form-control" }}
+                    {% if form.existing_customer.errors %}
+                        <div class="text-danger">{{ form.existing_customer.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <div id="new_customer_fields" class="row"> {# Initially visible for new walk-ins #}
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_customer_name.id_for_label }}">Full Name</label>
+                    {{ form.new_customer_name|attr:"class:form-control" }}
+                    {% if form.new_customer_name.errors %}
+                        <div class="text-danger">{{ form.new_customer_name.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_customer_phone.id_for_label }}">Phone Number</label>
+                    {{ form.new_customer_phone|attr:"class:form-control" }}
+                    {% if form.new_customer_phone.errors %}
+                        <div class="text-danger">{{ form.new_customer_phone.errors }}</div>
+                    {% endif %}
+                    <small class="form-text text-muted">Required to track discounts.</small>
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_customer_email.id_for_label }}">Email</label>
+                    {{ form.new_customer_email|attr:"class:form-control" }}
+                    {% if form.new_customer_email.errors %}
+                        <div class="text-danger">{{ form.new_customer_email.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_customer_gender.id_for_label }}">Gender</label>
+                    {{ form.new_customer_gender|attr:"class:form-control" }}
+                    {% if form.new_customer_gender.errors %}
+                        <div class="text-danger">{{ form.new_customer_gender.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12 mb-3">
+                    <label for="{{ form.new_customer_address.id_for_label }}">Address</label>
+                    {# Ensure this is now TextInput, not Textarea, if you made the form change #}
+                    {{ form.new_customer_address|attr:"class:form-control" }}
+                    {% if form.new_customer_address.errors %}
+                        <div class="text-danger">{{ form.new_customer_address.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            {# NEW: Customer Loyalty Info Display #}
+            <div id="customer_loyalty_info" class="card card-body bg-light mt-4 mb-3" style="display: none;">
+                <h5 class="mb-3">Customer Loyalty Status</h5>
+                <p class="mb-1"><strong>Loyalty Points:</strong> <span id="display_loyalty_points">0</span></p>
+                <p class="mb-1"><strong>Total Spend (all time):</strong> UGX <span id="display_total_spend">0.00</span></p>
+                <p class="mb-1"><strong>Total Visits (all time):</strong> <span id="display_total_visits">0</span></p>
+                <div id="loyalty_redemption_section" class="mt-3" style="display: none;">
+                    <div class="form-check">
+                        {{ form.redeem_loyalty_points|attr:"class:form-check-input" }}
+                        <label class="form-check-label" for="{{ form.redeem_loyalty_points.id_for_label }}">
+                            {{ form.redeem_loyalty_points.label }}
+                        </label>
+                        <span id="loyalty_redemption_status" class="form-text"></span>
+                        {% if form.redeem_loyalty_points.errors %}
+                            <div class="text-danger">{{ form.redeem_loyalty_points.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+
+            <div id="coupon_code_section" class="mt-4 mb-3" style="display: none;">
+                <label for="{{ form.coupon_code.id_for_label }}">Coupon Code</label>
+                {{ form.coupon_code|attr:"class:form-control" }}
+                {% if form.coupon_code.errors %}
+                    <div class="text-danger">{{ form.coupon_code.errors }}</div>
+                {% endif %}
+                <span id="coupon_status" class="form-text text-muted"></span>
+            </div>
+
+            <h5 class="mt-4 mb-3">Items Purchased</h5>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="transaction-items-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width: 40%;">Item</th>
+                            <th style="width: 15%;">Quantity</th>
+                            <th style="width: 30%;">Serviced By</th>
+                            <th style="width: 15%;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# THIS IS THE CRITICAL SECTION FOR FORMSET RENDERING #}
+                        {# Ensure the 'id' attribute for each field is exactly like this: id_items-0-item, id_items-0-quantity etc. #}
+                        {# Django's formset rendering creates these IDs. #}
+                        {% for fs_form in formset %}
+                        <tr class="formset-row">
+                            <td>
+                                {{ fs_form.item|attr:"class:form-control item-select" }}
+                                {% if fs_form.item.errors %}
+                                    <div class="text-danger">{{ fs_form.item.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ fs_form.quantity|attr:"class:form-control quantity-input" }}
+                                {% if fs_form.quantity.errors %}
+                                    <div class="text-danger">{{ fs_form.quantity.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ fs_form.employee|attr:"class:form-control employee-select" }}
+                                {% if fs_form.employee.errors %}
+                                    <div class="text-danger">{{ fs_form.employee.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if fs_form.instance.pk %}
+                                    {# If it's an existing item being edited, show checkbox to delete #}
+                                    {{ fs_form.DELETE }}
+                                    <label for="{{ fs_form.DELETE.id_for_label }}" class="ms-2">Delete?</label>
+                                {% else %}
+                                    {# If it's a new item (empty form in formset), provide a remove button #}
+                                    <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
+                                {% endif %}
+                                {{ fs_form.id }} {# Hidden ID field for formset management #}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {{ formset.management_form }} {# CRITICAL FOR DJANGO FORMSET #}
+            <button type="button" id="add-item-button" class="btn btn-secondary mt-2"><i class="bi bi-plus-lg me-2"></i>Add Another Item</button>
+
+            <h5 class="mt-4 mb-3">Summary</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label>Subtotal</label>
+                    <input type="text" id="subtotal_display" class="form-control" readonly value="0.00">
+                </div>
+                <div class="col-md-6 mb-3" id="discount_display_section" style="display:none;">
+                    <label>Total Discount</label>
+                    <input type="text" id="total_discount_display" class="form-control" readonly value="0.00">
+                </div>
+                <div class="col-12 mb-3">
+                    <label>Grand Total</label>
+                    <input type="text" id="grand_total_display" class="form-control form-control-lg" readonly value="0.00">
+                </div>
+            </div>
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">
+                    <i class="bi bi-save me-2"></i>Save Purchase
+                </button>
+            </div>
+        </form>
     </div>
-
-    <button type="submit" class="btn btn-primary">Save Purchase</button>
-</form>
-
+</div>
 
 {% endblock %}
 
 {% block javascripts %}
-    {# Place the itemPrices script BEFORE your revenue.js script #}
     <script>
+        // Ensure itemPrices and BUSINESS_SETTINGS are properly passed and are not empty/malformed
         const itemPrices = {{ item_prices_json|safe }};
+        const BUSINESS_SETTINGS = {
+            enable_loyalty_point_redemption: {{ business_settings.enable_loyalty_point_redemption|yesno:"true,false" }},
+            loyalty_points_required_for_redemption: {{ business_settings.loyalty_points_required_for_redemption|default:0 }},
+            loyalty_redemption_discount_type: "{{ business_settings.loyalty_redemption_discount_type|default:"percentage" }}",
+            loyalty_redemption_discount_value: parseFloat("{{ business_settings.loyalty_redemption_discount_value|default:0.00 }}"),
+            loyalty_redemption_max_discount_amount: parseFloat("{{ business_settings.loyalty_redemption_max_discount_amount|default:0.00 }}"),
+            loyalty_redemption_is_branch_specific: {{ business_settings.loyalty_redemption_is_branch_specific|yesno:"true,false" }},
+
+            enable_coupon_codes: {{ business_settings.enable_coupon_codes|yesno:"true,false" }},
+            coupon_loyalty_requirement_type: "{{ business_settings.coupon_loyalty_requirement_type|default:"none" }}",
+            loyalty_min_spend_for_coupon: parseFloat("{{ business_settings.loyalty_min_spend_for_coupon|default:0.00 }}"),
+            loyalty_min_visits_for_coupon: parseInt("{{ business_settings.loyalty_min_visits_for_coupon|default:0 }}"),
+            coupon_is_branch_specific: {{ business_settings.coupon_is_branch_specific|yesno:"true,false" }},
+        };
+        var subtotalDisplay = document.getElementById('id_subtotal');
+        var grandTotalDisplay = document.getElementById('id_grand_total');
+        const CSRF_TOKEN = "{{ csrf_token }}";
     </script>
     <script src="{% static 'assets/js/revenue.js' %}"></script>
 {% endblock javascripts %}

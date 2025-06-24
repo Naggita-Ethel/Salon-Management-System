@@ -1,240 +1,508 @@
+// static/assets/js/revenue.js
+
 document.addEventListener("DOMContentLoaded", function () {
-    const customerSelector = document.getElementById("id_customer_selector");
+    console.log("DOM Content Loaded. Initializing revenue.js.");
+
+
+    // --- Element References ---
+    // Corrected ID: 'id_customer_selector' from your Django form
+    const customerSelector = document.getElementById("id_customer_selector"); 
     const existingCustomerFields = document.getElementById("existing_customer_fields");
     const newCustomerFields = document.getElementById("new_customer_fields");
-    const branchSelector = document.getElementById("id_branch");
+    const branchSelector = document.getElementById("id_branch"); // Assuming this is correct
+    const existingCustomerDropdown = document.getElementById("id_existing_customer");
 
-    function toggleCustomerFields() {
-        if (customerSelector.value === "existing") {
-            existingCustomerFields.style.display = "block";
-            newCustomerFields.style.display = "none";
-        } else { // 'new'
-            existingCustomerFields.style.display = "none";
-            newCustomerFields.style.display = "block";
-        }
-    }
+    const customerLoyaltyInfo = document.getElementById("customer_loyalty_info");
+    const displayLoyaltyPoints = document.getElementById("display_loyalty_points");
+    const displayTotalSpend = document.getElementById("display_total_spend");
+    const displayTotalVisits = document.getElementById("display_total_visits");
+    const loyaltyRedemptionSection = document.getElementById("loyalty_redemption_section");
+    const redeemLoyaltyPointsCheckbox = document.getElementById("id_redeem_loyalty_points");
+    const loyaltyRedemptionStatus = document.getElementById("loyalty_redemption_status");
+    const couponCodeSection = document.getElementById("coupon_code_section");
+    const couponCodeInput = document.getElementById("id_coupon_code");
+    const couponStatus = document.getElementById("coupon_status");
 
-    customerSelector.addEventListener("change", toggleCustomerFields);
-    toggleCustomerFields(); // Initial call
-
-    // --- Item and Employee Management ---
-    const itemCategory = document.getElementById("item_category");
-    const existingItemSection = document.getElementById("existing_item_section");
-    const newItemFields = document.getElementById("new_item_fields");
-    const itemDropdown = document.getElementById("item_dropdown");
     const transactionItemsTableBody = document.querySelector("#transaction-items-table tbody");
     const addItemButton = document.getElementById("add-item-button");
-    const totalAmountDisplay = document.getElementById("total_amount_display");
+    const subtotalDisplay = document.getElementById("subtotal_display");
+    const discountDisplaySection = document.getElementById("discount_display_section");
+    const totalDiscountDisplay = document.getElementById("total_discount_display");
+    const grandTotalDisplay = document.getElementById("grand_total_display");
 
-    let formsetIndex = document.querySelectorAll('.formset-row').length;
+    let currentCustomerLoyaltyData = null; // Stores fetched loyalty data
+    let currentLoyaltyDiscount = 0;
+    let currentCouponDiscount = 0; // Currently, coupon is validated server-side on submission
+    let currentSubtotal = 0;
 
-    // itemPrices should be defined globally from your Django template
-    // const itemPrices = {{ item_prices_json|safe }}; // This is assumed to be already there
+    // Verify critical elements are found
+    console.log("customerSelector:", customerSelector);
+    console.log("branchSelector:", branchSelector);
+    console.log("addItemButton:", addItemButton);
+    console.log("subtotalDisplay:", subtotalDisplay);
+    console.log("transactionItemsTableBody:", transactionItemsTableBody);
+    console.log("Existing customer dropdown:", existingCustomerDropdown); // Added for debug
 
-    function updateTotalAmount() {
-        let total = 0;
-        document.querySelectorAll('.formset-row').forEach(row => {
-            // Ensure the row is not marked for deletion
-            const deleteInput = row.querySelector('[name$="-DELETE"]');
-            if (deleteInput && deleteInput.checked) { // Check if checkbox is checked
-                return; // Skip this row if marked for deletion
+
+    // Helper to format currency
+    function formatCurrency(amount) {
+        // Use toLocaleString for better internationalization and formatting (e.g., thousands separators)
+        return parseFloat(amount).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+    }
+
+    // Function to calculate and update all totals
+    function calculateAndDisplayTotals() {
+        console.log("calculateAndDisplayTotals() called.");
+        // 1. Calculate Subtotal
+        let subtotal = 0;
+        document.querySelectorAll('.formset-row').forEach((row, index) => {
+            const deleteInput = row.querySelector(`[name="items-${index}-DELETE"]`); 
+            if (deleteInput && deleteInput.checked) {
+                console.log(`Skipping row ${index} marked for deletion.`);
+                return;
             }
 
-            const quantityInput = row.querySelector('[name$="-quantity"]');
-            const itemSelect = row.querySelector('[name$="-item"]'); // This is the select element
+            const quantityInput = row.querySelector(`[name="items-${index}-quantity"]`);
+            const itemSelect = row.querySelector(`[name="items-${index}-item"]`);
 
             if (quantityInput && itemSelect && itemSelect.value) {
                 const quantity = parseInt(quantityInput.value) || 0;
                 const itemId = itemSelect.value;
-                const itemPrice = parseFloat(itemPrices[itemId]) || 0; // Use itemPrices from global scope
-                total += quantity * itemPrice;
+                
+                // Ensure itemPrices object exists and has the item ID
+                if (typeof itemPrices === 'object' && itemPrices !== null && itemPrices.hasOwnProperty(itemId)) {
+                    const itemData = itemPrices[itemId]; 
+                    const itemPrice = parseFloat(itemData.price) || 0;
+                    subtotal += quantity * itemPrice;
+                    console.log(`Row ${index}: Item Price: ${itemPrice}, Quantity: ${quantity}, Current Subtotal: ${subtotal}`);
+                } else {
+                    console.warn(`Row ${index}: Item data not found for ID: ${itemId} in itemPrices. Ensure itemPrices is correctly populated from Django context.`);
+                }
+            } else {
+                console.log(`Row ${index}: Missing quantity, item select, or item value.`);
             }
         });
-        totalAmountDisplay.value = total.toFixed(2);
+        currentSubtotal = subtotal;
+        subtotalDisplay.value = formatCurrency(currentSubtotal);
+        console.log("Calculated Subtotal:", currentSubtotal);
+
+        // 2. Calculate Discounts (client-side estimation)
+        currentLoyaltyDiscount = 0;
+        // currentCouponDiscount is typically handled server-side upon form submission
+        // For client-side display, you'd need an AJAX call to validate the coupon code
+        // and fetch its discount amount. For now, it remains 0 here.
+
+        // Loyalty Discount
+        if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_loyalty_point_redemption && redeemLoyaltyPointsCheckbox.checked && currentCustomerLoyaltyData) {
+            const pointsRequired = BUSINESS_SETTINGS.loyalty_points_required_for_redemption;
+            const customerPoints = currentCustomerLoyaltyData.loyalty_points;
+
+            if (customerPoints >= pointsRequired) {
+                // Check for branch specificity if enabled
+                if (BUSINESS_SETTINGS.loyalty_redemption_is_branch_specific &&
+                    currentCustomerLoyaltyData.branch_id !== null && // Ensure branch_id exists
+                    currentCustomerLoyaltyData.branch_id !== parseInt(branchSelector.value)) {
+                    
+                    loyaltyRedemptionStatus.textContent = `Points can only be redeemed at customer's home branch.`;
+                    loyaltyRedemptionStatus.style.color = 'red';
+                    // Do NOT apply discount if not at home branch
+                    redeemLoyaltyPointsCheckbox.checked = false; // Uncheck it if not allowed
+                } else {
+                    let discountValue = BUSINESS_SETTINGS.loyalty_redemption_discount_value;
+                    let discountAmount = 0;
+                    
+                    let remainingTotalForLoyaltyCalculation = currentSubtotal - currentCouponDiscount; // Apply loyalty after coupon (if any)
+
+                    if (BUSINESS_SETTINGS.loyalty_redemption_discount_type === 'percentage') {
+                        discountAmount = (remainingTotalForLoyaltyCalculation * discountValue) / 100;
+                        if (BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount > 0 && discountAmount > BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount) {
+                            discountAmount = BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount;
+                        }
+                    } else if (BUSINESS_SETTINGS.loyalty_redemption_discount_type === 'fixed') {
+                        discountAmount = discountValue;
+                        if (BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount > 0 && discountAmount > BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount) {
+                            discountAmount = BUSINESS_SETTINGS.loyalty_redemption_max_discount_amount;
+                        }
+                    }
+                    currentLoyaltyDiscount = Math.min(discountAmount, remainingTotalForLoyaltyCalculation); // Ensure discount doesn't exceed subtotal
+                    loyaltyRedemptionStatus.textContent = `Redeeming ${pointsRequired} points for UGX ${formatCurrency(currentLoyaltyDiscount)} discount.`;
+                    loyaltyRedemptionStatus.style.color = 'green';
+                }
+            } else {
+                // Not enough points
+                loyaltyRedemptionStatus.textContent = `Not enough points to redeem (${currentCustomerLoyaltyData.loyalty_points}/${pointsRequired}).`;
+                loyaltyRedemptionStatus.style.color = 'red';
+                redeemLoyaltyPointsCheckbox.checked = false; // Uncheck if not enough points
+                currentLoyaltyDiscount = 0; // Ensure no discount
+            }
+        } else {
+            // Loyalty redemption not enabled, checkbox not checked, or no customer data
+            currentLoyaltyDiscount = 0; // No loyalty discount
+            if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_loyalty_point_redemption) {
+                loyaltyRedemptionStatus.textContent = `Requires ${BUSINESS_SETTINGS.loyalty_points_required_for_redemption} points to redeem.`;
+                loyaltyRedemptionStatus.style.color = 'gray';
+            } else {
+                loyaltyRedemptionStatus.textContent = ''; // Clear if feature disabled
+            }
+            redeemLoyaltyPointsCheckbox.checked = false; // Uncheck if ineligible or no customer
+        }
+        
+        // Final total discount
+        let totalDiscount = currentLoyaltyDiscount + currentCouponDiscount;
+
+        // 3. Calculate Grand Total
+        let grandTotal = currentSubtotal - totalDiscount;
+        if (grandTotal < 0) grandTotal = 0;
+
+        totalDiscountDisplay.value = formatCurrency(totalDiscount);
+        grandTotalDisplay.value = formatCurrency(grandTotal);
+
+        if (totalDiscount > 0) {
+            discountDisplaySection.style.display = 'block';
+        } else {
+            discountDisplaySection.style.display = 'none';
+        }
+        console.log(`Totals updated: Subtotal=${currentSubtotal}, Loyalty Discount=${currentLoyaltyDiscount}, Total Discount=${totalDiscount}, Grand Total=${grandTotal}`);
     }
 
-    // Function to fetch and populate items and their prices for the main dropdown
-    function fetchAndPopulateItemsAndPrices(category, callback) {
-        fetch(`/get-items-by-category/?category=${category}`)
-            .then(response => response.json())
-            .then(data => {
-                itemDropdown.innerHTML = `<option value="">-- Select Item --</option>`;
-                // itemPrices is globally defined, so we don't clear it here.
-                // We assume `itemPrices` already contains all items from the view context.
-                data.forEach(item => {
-                    itemDropdown.innerHTML += `<option value="${item.id}">${item.name}</option>`;
-                });
-                itemDropdown.innerHTML += `<option value="new">+ Add New Item</option>`;
-                if (callback) callback();
-            })
-            .catch(error => console.error('Error fetching items:', error));
+    // --- Customer Selection and Loyalty Data Fetching ---
+    function toggleCustomerFields() {
+        const selectedType = customerSelector.value;
+        if (selectedType === 'existing') {
+            existingCustomerFields.style.display = '';
+            newCustomerFields.style.display = 'none';
+            customerLoyaltyInfo.style.display = 'block';
+            if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_loyalty_point_redemption) {
+                redeemLoyaltyPointsCheckbox.removeAttribute('disabled');
+            } else {
+                redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled');
+            }
+            existingCustomerDropdown.setAttribute('required', 'required');
+            document.getElementById('id_new_customer_name').removeAttribute('required');
+            document.getElementById('id_new_customer_phone').removeAttribute('required');
+            if (existingCustomerDropdown.value) {
+                fetchCustomerLoyaltyData(existingCustomerDropdown.value);
+            } else {
+                currentCustomerLoyaltyData = null;
+                displayLoyaltyPoints.textContent = '0';
+                displayTotalSpend.textContent = '0.00';
+                displayTotalVisits.textContent = '0';
+                loyaltyRedemptionSection.style.display = 'none';
+                redeemLoyaltyPointsCheckbox.checked = false;
+                loyaltyRedemptionStatus.textContent = 'Select an existing customer to see loyalty info.';
+                loyaltyRedemptionStatus.style.color = 'gray';
+                calculateAndDisplayTotals();
+            }
+        } else {
+            existingCustomerFields.style.display = 'none';
+            newCustomerFields.style.display = '';
+            customerLoyaltyInfo.style.display = 'none';
+            existingCustomerDropdown.removeAttribute('required');
+            document.getElementById('id_new_customer_name').setAttribute('required', 'required');
+            document.getElementById('id_new_customer_phone').setAttribute('required', 'required');
+            currentCustomerLoyaltyData = null;
+            displayLoyaltyPoints.textContent = '0';
+            displayTotalSpend.textContent = '0.00';
+            displayTotalVisits.textContent = '0';
+            loyaltyRedemptionSection.style.display = 'none';
+            redeemLoyaltyPointsCheckbox.checked = false;
+            redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled');
+            loyaltyRedemptionStatus.textContent = 'New customers cannot redeem points immediately.';
+            loyaltyRedemptionStatus.style.color = 'gray';
+            calculateAndDisplayTotals();
+        }
+        if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_coupon_codes) {
+            couponCodeSection.style.display = 'block';
+        } else {
+            couponCodeSection.style.display = 'none';
+            couponCodeInput.value = '';
+            couponStatus.textContent = '';
+        }
     }
 
-    // Function to populate employee dropdowns for a given select element and branch ID
-    function populateEmployeeDropdown(employeeSelectElement, branchId) {
+    async function fetchCustomerLoyaltyData(customerId) {
+        console.log("fetchCustomerLoyaltyData() called for customer ID:", customerId);
+        if (!customerId) {
+            customerLoyaltyInfo.style.display = 'none';
+            currentCustomerLoyaltyData = null;
+            redeemLoyaltyPointsCheckbox.checked = false;
+            redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled');
+            loyaltyRedemptionStatus.textContent = 'No customer selected.';
+            loyaltyRedemptionStatus.style.color = 'gray';
+            calculateAndDisplayTotals();
+            return;
+        }
+
+        try {
+            const response = await fetch(`/get-customer-details/${customerId}/`, { // Corrected URL
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRFToken': CSRF_TOKEN, // Assumed CSRF_TOKEN is available globally
+                }
+            });
+            const data = await response.json();
+
+            console.log("Loyalty data received:", data);
+            if (data.success) {
+                currentCustomerLoyaltyData = data; // Store all data
+                customerLoyaltyInfo.style.display = 'block';
+                displayLoyaltyPoints.textContent = data.loyalty_points.toLocaleString();
+                displayTotalSpend.textContent = formatCurrency(data.total_spend);
+                displayTotalVisits.textContent = data.total_visits.toLocaleString();
+
+                if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_loyalty_point_redemption) {
+                    loyaltyRedemptionSection.style.display = 'block';
+                    redeemLoyaltyPointsCheckbox.removeAttribute('disabled'); // Enable checkbox if feature is on
+                    if (data.loyalty_points >= BUSINESS_SETTINGS.loyalty_points_required_for_redemption) {
+                        loyaltyRedemptionStatus.textContent = `Customer qualifies for loyalty discount! (Requires ${BUSINESS_SETTINGS.loyalty_points_required_for_redemption.toLocaleString()} points)`;
+                        loyaltyRedemptionStatus.style.color = 'green';
+                    } else {
+                        redeemLoyaltyPointsCheckbox.checked = false; // Uncheck if not enough points
+                        // Re-disable if not enough points, even if feature is enabled
+                        redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled'); 
+                        loyaltyRedemptionStatus.textContent = `Needs ${BUSINESS_SETTINGS.loyalty_points_required_for_redemption.toLocaleString()} points to redeem. Current: ${data.loyalty_points.toLocaleString()}`;
+                        loyaltyRedemptionStatus.style.color = 'red';
+                    }
+                } else {
+                    loyaltyRedemptionSection.style.display = 'none';
+                    redeemLoyaltyPointsCheckbox.checked = false;
+                    redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled'); // Disable if feature is off
+                    loyaltyRedemptionStatus.textContent = ''; // No message if feature disabled
+                }
+            } else {
+                customerLoyaltyInfo.style.display = 'none';
+                redeemLoyaltyPointsCheckbox.checked = false;
+                redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled');
+                loyaltyRedemptionStatus.textContent = `Could not fetch loyalty data: ${data.error || 'Unknown error'}`;
+                loyaltyRedemptionStatus.style.color = 'red';
+                console.error("Error fetching loyalty data:", data.error);
+                currentCustomerLoyaltyData = null; // Clear data on error
+            }
+            calculateAndDisplayTotals(); // Recalculate after loyalty data is updated
+        } catch (error) {
+            console.error('Error fetching customer loyalty data (AJAX request failed):', error);
+            customerLoyaltyInfo.style.display = 'none';
+            redeemLoyaltyPointsCheckbox.checked = false;
+            redeemLoyaltyPointsCheckbox.setAttribute('disabled', 'disabled');
+            loyaltyRedemptionStatus.textContent = 'Error fetching loyalty data. Check console.';
+            loyaltyRedemptionStatus.style.color = 'red';
+            currentCustomerLoyaltyData = null; // Clear data on error
+            calculateAndDisplayTotals(); // Recalculate after error
+        }
+    }
+
+    // --- Dynamic Formset Management ---
+    function populateAllItemsDropdown(itemSelectElement, selectedItemId = null) {
+        console.log("populateAllItemsDropdown() called for element:", itemSelectElement);
+        itemSelectElement.innerHTML = `<option value="">-- Select Item --</option>`;
+        if (typeof itemPrices !== 'object' || itemPrices === null || Object.keys(itemPrices).length === 0) {
+            console.warn("itemPrices object is empty, null, or undefined. Cannot populate item dropdown.");
+            return;
+        }
+        for (const itemId in itemPrices) {
+            if (itemPrices.hasOwnProperty(itemId)) {
+                const itemData = itemPrices[itemId];
+                const option = document.createElement('option');
+                option.value = itemId;
+                option.textContent = itemData.name; // ONLY ITEM NAME
+                if (selectedItemId && itemId == selectedItemId) {
+                    option.selected = true;
+                }
+                itemSelectElement.appendChild(option);
+            }
+        }
+    }
+
+    function populateEmployeeDropdown(employeeSelectElement, branchId, selectedEmployeeId = null) {
+        console.log(`populateEmployeeDropdown() called for element:`, employeeSelectElement, `Branch ID: ${branchId}, Selected Employee ID: ${selectedEmployeeId}`);
         if (!branchId) {
             employeeSelectElement.innerHTML = `<option value="">-- Select Branch First --</option>`;
             employeeSelectElement.setAttribute('disabled', 'disabled');
+            employeeSelectElement.style.backgroundColor = '#e9ecef'; // Grey out
             return;
         }
         employeeSelectElement.removeAttribute('disabled');
+        employeeSelectElement.style.backgroundColor = ''; // Remove grey out
+        employeeSelectElement.innerHTML = `<option value="">Loading employees...</option>`;
         fetch(`/get-employees-by-branch/?branch_id=${branchId}`)
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log("Employees data received:", data);
                 employeeSelectElement.innerHTML = `<option value="">-- Select Employee --</option>`;
                 data.forEach(employee => {
-                    employeeSelectElement.innerHTML += `<option value="${employee.id}">${employee.name}</option>`;
+                    const option = document.createElement('option');
+                    option.value = employee.id;
+                    option.textContent = employee.name;
+                    if (selectedEmployeeId && employee.id == selectedEmployeeId) {
+                        option.selected = true;
+                    }
+                    employeeSelectElement.appendChild(option);
                 });
+                // After populating, ensure the correct option is selected if one was pre-selected
+                // and if the option actually exists in the new dropdown
+                if (selectedEmployeeId && !employeeSelectElement.querySelector(`option[value="${selectedEmployeeId}"]`)) {
+                    console.warn(`Previously selected employee ID ${selectedEmployeeId} not found in new list for branch ${branchId}. Resetting.`);
+                    employeeSelectElement.value = ""; // Reset to default
+                }
             })
-            .catch(error => console.error('Error fetching employees:', error));
+            .catch(error => {
+                console.error('Error fetching employees (AJAX request failed):', error);
+                employeeSelectElement.innerHTML = `<option value="">-- Error loading employees --</option>`;
+                employeeSelectElement.setAttribute('disabled', 'disabled'); // Disable on error
+                employeeSelectElement.style.backgroundColor = '#e9ecef';
+            });
     }
 
-    // Event listener for main Item Category dropdown
-    itemCategory.addEventListener("change", function () {
-        const category = this.value;
-        if (category) {
-            existingItemSection.style.display = "block";
-            fetchAndPopulateItemsAndPrices(category);
-        } else {
-            existingItemSection.style.display = "none";
-        }
-    });
-
-    // Event listener for main Item dropdown (to show new item fields)
-    itemDropdown.addEventListener("change", function () {
-        if (this.value === "new") {
-            newItemFields.style.display = "block";
-        } else {
-            newItemFields.style.display = "none";
-        }
-    });
-
-    // Function to add a new formset row
     function addFormsetRow() {
+        console.log("addFormsetRow() called.");
         const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS');
-        const currentTotal = parseInt(totalFormsInput.value);
+        let currentTotal = parseInt(totalFormsInput.value);
+
+        const newIndex = currentTotal;
 
         const newRowHtml = `
             <tr class="formset-row">
                 <td>
-                    <select name="items-${currentTotal}-item" class="form-control item-select" required>
+                    <select name="items-${newIndex}-item" id="id_items-${newIndex}-item" class="form-control item-select" required>
                         <option value="">-- Select Item --</option>
                     </select>
                 </td>
-                <td><input type="number" name="items-${currentTotal}-quantity" class="form-control quantity-input" value="1" min="1" required></td>
+                <td><input type="number" name="items-${newIndex}-quantity" id="id_items-${newIndex}-quantity" class="form-control quantity-input" value="1" min="1" required></td>
                 <td>
-                    <select name="items-${currentTotal}-employee" class="form-control employee-select">
+                    <select name="items-${newIndex}-employee" id="id_items-${newIndex}-employee" class="form-control employee-select">
                         <option value="">-- Select Employee --</option>
                     </select>
                 </td>
                 <td>
                     <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
-                    <input type="hidden" name="items-${currentTotal}-id" id="id_items-${currentTotal}-id">
-                    <input type="hidden" name="items-${currentTotal}-DELETE" id="id_items-${currentTotal}-DELETE" value="false">
+                    <input type="hidden" name="items-${newIndex}-id" id="id_items-${newIndex}-id">
+                    <input type="hidden" name="items-${newIndex}-DELETE" id="id_items-${newIndex}-DELETE" value="false">
                 </td>
             </tr>
         `;
         transactionItemsTableBody.insertAdjacentHTML('beforeend', newRowHtml);
 
-        // Update TOTAL_FORMS
         totalFormsInput.value = currentTotal + 1;
 
-        // Get references to the newly added elements
+        // Select the newly added row and its elements
         const newRow = transactionItemsTableBody.lastElementChild;
         const newItemSelect = newRow.querySelector('.item-select');
         const newQuantityInput = newRow.querySelector('.quantity-input');
         const newEmployeeSelect = newRow.querySelector('.employee-select');
         const removeButton = newRow.querySelector('.remove-item-button');
 
-        // Clone options from the main itemDropdown to the new one
-        // This ensures the new row's item select has options if a category was already picked
-        if (itemDropdown.value) {
-            newItemSelect.innerHTML = itemDropdown.innerHTML;
-        } else {
-            // If no category selected yet, ensure it's empty
-            newItemSelect.innerHTML = `<option value="">-- Select Item --</option>`;
-        }
-
-        // Populate employees in the new row's employee select based on currently selected branch
+        // Populate dropdowns and attach listeners for the new row
+        populateAllItemsDropdown(newItemSelect);
         const selectedBranchId = branchSelector.value;
         populateEmployeeDropdown(newEmployeeSelect, selectedBranchId);
 
-        // Add event listeners for the new row's inputs
-        newItemSelect.addEventListener('change', updateTotalAmount);
-        newQuantityInput.addEventListener('input', updateTotalAmount);
+        newItemSelect.addEventListener('change', calculateAndDisplayTotals);
+        newQuantityInput.addEventListener('input', calculateAndDisplayTotals);
         removeButton.addEventListener('click', removeFormsetRow);
+
+        calculateAndDisplayTotals(); // Recalculate after adding a new row (even if empty initially)
     }
 
     function removeFormsetRow(event) {
+        console.log("removeFormsetRow() called.");
         const row = event.target.closest('.formset-row');
         const deleteInput = row.querySelector('[name$="-DELETE"]');
         if (deleteInput) {
             deleteInput.value = 'on'; // Mark for deletion
             row.style.display = 'none'; // Hide the row
-            updateTotalAmount();
+            console.log("Row marked for deletion and hidden.");
+            calculateAndDisplayTotals();
         } else {
-            // This case should ideally not happen if hidden DELETE field is always present
+            // Fallback for direct removal if DELETE input isn't found (shouldn't happen with proper formsets)
+            console.warn("DELETE input not found, directly removing row from DOM.");
             row.remove();
-            updateTotalAmount();
-            // Decrement TOTAL_FORMS if it's not a server-rendered form being marked for delete
-            const totalFormsInput = document.getElementById('id_items-TOTAL_FORMS');
-            totalFormsInput.value = parseInt(totalFormsInput.value) - 1;
+            calculateAndDisplayTotals();
         }
     }
 
-    // Initial setup for existing rows (if any) and event delegation
-    // Attach event listeners to already rendered formset rows
-    document.querySelectorAll('.formset-row').forEach(row => {
-        const deleteButton = row.querySelector('.remove-item-button');
-        if (deleteButton) {
-            deleteButton.addEventListener('click', removeFormsetRow);
-        }
-        const quantityInput = row.querySelector('[name$="-quantity"]');
-        if (quantityInput) {
-            quantityInput.addEventListener('input', updateTotalAmount);
-        }
-        const itemSelect = row.querySelector('[name$="-item"]');
-        if (itemSelect) {
-            itemSelect.addEventListener('change', updateTotalAmount);
-        }
-    });
+    // --- Initial Setup and Event Attachments ---
+    function initializeFormsetRows() {
+        console.log("initializeFormsetRows() called. Attaching listeners to initial rows.");
+        document.querySelectorAll('.formset-row').forEach((row, index) => {
+            const deleteButton = row.querySelector('.remove-item-button');
+            if (deleteButton) {
+                deleteButton.addEventListener('click', removeFormsetRow);
+            }
+            const quantityInput = row.querySelector(`[name="items-${index}-quantity"]`);
+            if (quantityInput) {
+                quantityInput.addEventListener('input', calculateAndDisplayTotals);
+            }
+            const itemSelect = row.querySelector(`[name="items-${index}-item"]`);
+            if (itemSelect) {
+                itemSelect.addEventListener('change', calculateAndDisplayTotals);
+                // Populate item dropdown for existing rows on load
+                const initialSelectedItemId = itemSelect.value;
+                populateAllItemsDropdown(itemSelect, initialSelectedItemId);
+            }
 
-    addItemButton.addEventListener('click', addFormsetRow);
-
-    // Handle branch change to repopulate all employee dropdowns in all item rows
-    branchSelector.addEventListener('change', function() {
-        const selectedBranchId = this.value;
-        // Populate main transaction serviced_by
-        const mainServicedBy = document.getElementById('id_serviced_by');
-        if (mainServicedBy) {
-            populateEmployeeDropdown(mainServicedBy, selectedBranchId);
-        }
-
-        // Populate all item-specific serviced_by dropdowns
-        document.querySelectorAll('.employee-select').forEach(employeeDropdown => {
-            populateEmployeeDropdown(employeeDropdown, selectedBranchId);
-        });
-    });
-
-    // Initial population for branch-dependent dropdowns on page load
-    // This will run when the page loads for the first time.
-    const initialBranchId = branchSelector.value;
-    if (initialBranchId) {
-        // Populate main transaction serviced_by if branch is pre-selected
-        const mainServicedBy = document.getElementById('id_serviced_by');
-        if (mainServicedBy) {
-            populateEmployeeDropdown(mainServicedBy, initialBranchId);
-        }
-        // Populate existing item rows' employee dropdowns
-        document.querySelectorAll('.employee-select').forEach(employeeDropdown => {
-            // Only populate if the dropdown is not already selected for an existing item
-            // (e.g., if you're editing a transaction and an employee was already chosen)
-            if (!employeeDropdown.value) { // Only if current value is empty
-                populateEmployeeDropdown(employeeDropdown, initialBranchId);
+            const employeeSelect = row.querySelector(`[name="items-${index}-employee"]`);
+            if (employeeSelect) {
+                const initialSelectedEmployeeId = employeeSelect.value;
+                const currentBranchId = branchSelector.value;
+                console.log(`Initial row ${index}: Employee dropdown for branch ${currentBranchId}, selected: ${initialSelectedEmployeeId}`);
+                if (currentBranchId) {
+                    populateEmployeeDropdown(employeeSelect, currentBranchId, initialSelectedEmployeeId);
+                } else {
+                    employeeSelect.innerHTML = `<option value="">-- Select Branch First --</option>`;
+                    employeeSelect.setAttribute('disabled', 'disabled');
+                    employeeSelect.style.backgroundColor = '#e9ecef';
+                }
             }
         });
     }
 
-    // Initial total amount calculation on page load
-    updateTotalAmount();
+    // --- Main Initializations ---
+    // Event listeners for main form fields
+    if (customerSelector) customerSelector.addEventListener("change", toggleCustomerFields);
+    if (existingCustomerDropdown) existingCustomerDropdown.addEventListener('change', function() {
+        fetchCustomerLoyaltyData(this.value);
+    });
+    if (redeemLoyaltyPointsCheckbox) redeemLoyaltyPointsCheckbox.addEventListener('change', calculateAndDisplayTotals);
+    if (couponCodeInput) couponCodeInput.addEventListener('input', calculateAndDisplayTotals); // Or change event for coupon
+    if (addItemButton) addItemButton.addEventListener('click', addFormsetRow);
+
+    // Branch selector specific logic
+    if (branchSelector) {
+        branchSelector.addEventListener('change', function() {
+            console.log("Branch selector changed to:", this.value);
+            const selectedBranchId = this.value;
+            // Re-populate all employee dropdowns on branch change
+            document.querySelectorAll('.employee-select').forEach(employeeDropdown => {
+                const currentSelectedEmployeeId = employeeDropdown.value; // Keep previously selected if possible
+                populateEmployeeDropdown(employeeDropdown, selectedBranchId, currentSelectedEmployeeId);
+            });
+            // Re-evaluate customer loyalty data for branch-specific loyalty
+            if (existingCustomerDropdown && existingCustomerDropdown.value) {
+                fetchCustomerLoyaltyData(existingCustomerDropdown.value);
+            }
+            calculateAndDisplayTotals();
+        });
+    }
+
+    // Initial setup calls
+    toggleCustomerFields(); // Sets initial display of customer fields
+    initializeFormsetRows(); // Attaches event listeners and populates dropdowns for initial rows
+
+    // Show/hide coupon section based on business settings
+    // This should ideally be within toggleCustomerFields if coupon visibility depends on customer type
+    // If it's universally enabled/disabled, this is fine here.
+    if (typeof BUSINESS_SETTINGS !== 'undefined' && BUSINESS_SETTINGS.enable_coupon_codes) {
+        couponCodeSection.style.display = 'block';
+    } else {
+        couponCodeSection.style.display = 'none';
+    }
+
+    // Final initial calculation
+    calculateAndDisplayTotals();
+    console.log("revenue.js initialization complete.");
 });

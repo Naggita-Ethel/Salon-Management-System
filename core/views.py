@@ -1,13 +1,14 @@
-from datetime import timezone
+from django.utils import timezone
 from decimal import Decimal, InvalidOperation
-from pyexpat.errors import messages
+import json
+from django.contrib import messages
 import uuid
-from django.forms import inlineformset_factory
-from django.http import JsonResponse
+from django.forms import formset_factory, inlineformset_factory
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
-from django.urls import reverse_lazy
-from .models import Branch, BranchEmployee, BusinessSettings, Item, Party, Transaction, TransactionItem, User, UserRole
+from django.urls import reverse, reverse_lazy
+from .models import Branch, BranchEmployee, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
 from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
@@ -19,25 +20,162 @@ import logging
 from django.db import transaction as db_transaction
 from django.core.paginator import Paginator
 from xhtml2pdf import pisa # If you choose xhtml2pdf
+from django.db.models import Sum, Count
+from django.contrib.humanize.templatetags.humanize import intcomma 
+from django.views.decorators.csrf import csrf_protect
 
 from core import forms
-
-# In your views.py
-
-from django.http import HttpResponse
-from django.template.loader import get_template
 import io
-from xhtml2pdf import pisa # If you choose xhtml2pdf
+from django.template.loader import get_template 
 
 @login_required
+def get_customer_details(request, customer_id):
+    """
+    API endpoint to fetch details of an existing customer,
+    specifically loyalty points, total spend, and total visits.
+    """
+    try:
+        # Ensure the customer belongs to the current user's business
+        # Add prefetch/select_related here if Party.total_spend/total_visits are not direct fields
+        # but calculated from related models (e.g., related transactions)
+        customer = Party.objects.get(id=customer_id, business=request.user.business)
+        
+        data = {
+            'success': True,
+            'full_name': customer.full_name,
+            'phone': customer.phone,
+            'email': customer.email,
+            'address': customer.address,
+            'gender': customer.gender,
+            'loyalty_points': customer.loyalty_points,
+            # Convert Decimal to float for JSON serialization.
+            # Make sure 'total_spend' and 'total_visits' exist on your Party model (as fields or properties).
+            'total_spend': float(customer.total_spend) if hasattr(customer, 'total_spend') and customer.total_spend is not None else 0.00,
+            'total_visits': customer.total_visits if hasattr(customer, 'total_visits') and customer.total_visits is not None else 0,
+            'branch_id': customer.branch.id if customer.branch else None,
+        }
+    except Party.DoesNotExist:
+        data = {'success': False, 'error': 'Customer not found.'}
+    except Exception as e:
+        # Log the actual exception for debugging
+        print(f"Error in get_customer_details: {e}")
+        data = {'success': False, 'error': 'An unexpected error occurred.'}
+    return JsonResponse(data)
+
+@login_required # Protect this view
+@require_POST
+def update_transaction_status(request, pk):
+    """
+    API endpoint to update the status of a specific transaction (e.g., void, refund).
+    Expected to receive JSON: {'status': 'new_status'}
+    """
+    try:
+        transaction = get_object_or_404(Transaction, pk=pk, branch__business=request.user.business)
+        
+        # Ensure only staff or specific roles can perform this action
+        if not request.user.is_staff: # Or check custom permission: if not request.user.has_perm('transactions.can_change_status'):
+             return JsonResponse({'success': False, 'error': 'Permission denied.'}, status=403)
+
+        data = json.loads(request.body)
+        new_status = data.get('status')
+
+        valid_transitions = {
+            'completed': ['voided', 'refunded'],
+            # You can define other valid transitions here if needed
+        }
+
+        # Check if the new_status is valid and the transition is allowed
+        if new_status not in ['voided', 'refunded'] or \
+           new_status not in valid_transitions.get(transaction.status, []):
+            return JsonResponse({'success': False, 'error': f'Invalid status or transition not allowed from {transaction.status} to {new_status}.'}, status=400)
+
+        # Additional business logic for voiding/refunding
+        if new_status == 'voided':
+            # Example: If you need to revert stock or special accounting
+            # transaction.void_transaction() # A method on your model
+            pass
+        elif new_status == 'refunded':
+            # Example: If you need to process a refund, generate a refund record
+            # transaction.initiate_refund() # A method on your model
+            pass
+
+        transaction.status = new_status
+        transaction.save()
+        return JsonResponse({'success': True, 'message': f'Transaction status updated to {new_status}.'})
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON in request body.'}, status=400)
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error updating transaction status for PK {pk}: {e}")
+        return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
+
+
+@login_required # Protect this view
+@require_POST
+# @csrf_protect # Use this in production.
+def toggle_payment_status(request, pk):
+    """
+    API endpoint to toggle the payment status (is_paid) of a specific transaction.
+    Expected to receive JSON: {'is_paid': true/false}
+    """
+    try:
+        transaction = get_object_or_404(Transaction, pk=pk, branch__business=request.user.business)
+
+        # Ensure only staff or specific roles can perform this action
+        if not request.user.is_staff: # Or check custom permission
+             return JsonResponse({'success': False, 'error': 'Permission denied.'}, status=403)
+
+        data = json.loads(request.body)
+        is_paid_new = data.get('is_paid')
+
+        if not isinstance(is_paid_new, bool):
+            return JsonResponse({'success': False, 'error': 'Invalid value for is_paid. Must be true or false.'}, status=400)
+
+        transaction.is_paid = is_paid_new
+        if is_paid_new:
+            if not transaction.paid_at: # Only update paid_at if it's currently null
+                transaction.paid_at = timezone.now()
+        else:
+            transaction.paid_at = None # Clear paid_at if marked as pending
+
+        transaction.save()
+        return JsonResponse({'success': True, 'message': 'Payment status updated.'})
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON in request body.'}, status=400)
+    except Exception as e:
+        # Log the error for debugging
+        print(f"Error toggling payment status for PK {pk}: {e}")
+        return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
+
+from django.views.decorators.clickjacking import xframe_options_sameorigin
+
+@login_required
+@xframe_options_sameorigin
 def receipt_view(request, transaction_id):
-    transaction = get_object_or_404(Transaction, id=transaction_id, branch__business=request.user.business)
+    transaction = get_object_or_404(
+        Transaction.objects
+        .select_related(
+            'branch',            # Select related Branch
+            'party',             # Select related Customer/Party
+            'branch__business',  # Select related Business through Branch
+            'branch__business__owner' # Select related User (owner) through Business
+        )
+        .prefetch_related(
+            'transaction_items',                # Prefetch all transaction items
+            'transaction_items__item',          # Prefetch the Item related to each TransactionItem
+            'transaction_items__employee',      # Prefetch the BranchEmployee related to each TransactionItem
+            'transaction_items__employee__user' # Prefetch the User related to each BranchEmployee
+        ),
+        id=transaction_id, 
+        branch__business=request.user.business # Security check: ensure the transaction belongs to the user's business
+    )
     
     context = {
         'transaction': transaction,
-        'business': request.user.business,
-        'branch': transaction.branch,
-        # Add any other data needed for the receipt
+        'business': transaction.branch.business, # Access business through the transaction's branch
+        'branch': transaction.branch,          # Access branch directly from the transaction
+        # All other necessary data like item details, employee, etc., are now directly accessible
+        # via the 'transaction' object due to prefetch_related
     }
     
     # Render for preview
@@ -48,8 +186,9 @@ def receipt_view(request, transaction_id):
     template = get_template('home/receipt_template.html')
     html = template.render(context)
     result = io.BytesIO()
-    pdf = pisa.pisaDocument(io.BytesIO(html.encode("UTF-8")), result)
-    
+    pdf = pisa.CreatePDF(io.BytesIO(html.encode("UTF-8")), result) # Use CreatePDF instead of pisaDocument directly
+
+    # Check for errors in PDF generation
     if not pdf.err:
         response = HttpResponse(result.getvalue(), content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="receipt_{transaction.id}.pdf"'
@@ -58,14 +197,11 @@ def receipt_view(request, transaction_id):
     return HttpResponse('Error generating PDF', status=500)
 
 
-
 TransactionItemFormSet = inlineformset_factory(Transaction, TransactionItem, form=TransactionItemForm, extra=1, can_delete=True)
 
-
 @login_required
-def get_items_by_category(request):
-    category = request.GET.get('category')
-    # Filter by business of the current user
+def get_items_by_category(request): # This AJAX endpoint might become redundant if all items are loaded
+    category = request.GET.get('category') # If you still use it for anything else, keep it.
     items = Item.objects.filter(business=request.user.business, type=category).values('id', 'name', 'selling_price')
     return JsonResponse(list(items), safe=False)
 
@@ -78,165 +214,290 @@ def get_employees_by_branch(request):
         status='active'
     ).select_related('user').values('id', 'user__full_name', 'user__username')
     
-    # Format for display: use full_name if available, else username
     formatted_employees = [{'id': emp['id'], 'name': emp['user__full_name'] or emp['user__username']} for emp in employees]
     return JsonResponse(formatted_employees, safe=False)
 
+@login_required
+def get_customer_loyalty_data(request):
+    """
+    AJAX endpoint to fetch customer loyalty points and transaction count/spend
+    for dynamic display and validation on the frontend.
+    """
+    customer_id = request.GET.get('customer_id')
+    try:
+        customer = Party.objects.get(id=customer_id, business=request.user.business, type='customer')
+        
+        total_customer_spend = Transaction.objects.filter(
+            party=customer,
+            transaction_type='revenue',
+            is_paid=True
+        ).aggregate(Sum('amount'))['amount__sum'] or 0
+
+        total_customer_visits = Transaction.objects.filter(
+            party=customer,
+            transaction_type='revenue',
+            is_paid=True
+        ).count()
+
+        business_settings = BusinessSettings.objects.get_or_create(business=request.user.business)[0]
+
+        data = {
+            'success': True,
+            'loyalty_points': customer.loyalty_points,
+            'total_spend': float(total_customer_spend),
+            'total_visits': total_customer_visits,
+            'enable_loyalty_point_redemption': business_settings.enable_loyalty_point_redemption,
+            'loyalty_points_required_for_redemption': business_settings.loyalty_points_required_for_redemption,
+            'loyalty_redemption_discount_type': business_settings.loyalty_redemption_discount_type,
+            'loyalty_redemption_discount_value': float(business_settings.loyalty_redemption_discount_value),
+            'loyalty_redemption_max_discount_amount': float(business_settings.loyalty_redemption_max_discount_amount) if business_settings.loyalty_redemption_max_discount_amount else 0,
+            'loyalty_redemption_is_branch_specific': business_settings.loyalty_redemption_is_branch_specific,
+            # Pass details about current customer's branches for branch-specific loyalty
+            'customer_branch_id': customer.branch.id if customer.branch else None,
+            'enable_coupon_codes': business_settings.enable_coupon_codes,
+            'coupon_loyalty_requirement_type': business_settings.coupon_loyalty_requirement_type,
+            'loyalty_min_spend_for_coupon': float(business_settings.loyalty_min_spend_for_coupon) if business_settings.loyalty_min_spend_for_coupon else 0,
+            'loyalty_min_visits_for_coupon': business_settings.loyalty_min_visits_for_coupon if business_settings.loyalty_min_visits_for_coupon else 0,
+            'coupon_is_branch_specific': business_settings.coupon_is_branch_specific,
+        }
+        return JsonResponse(data)
+    except Party.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Customer not found.'}, status=404)
+    except BusinessSettings.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Business settings not found.'}, status=500)
+
+
+# Helper to get item prices for JS
+def get_item_prices_json(business):
+    # CORRECTED: Simply select 'type' as a field, no double underscore
+    items = Item.objects.filter(business=business).values('id', 'name', 'selling_price', 'type')
+    item_prices = {
+        str(item['id']): {
+            'name': item['name'],
+            'price': str(item['selling_price']),
+            'type': item['type'] # Access directly as 'type'
+        } for item in items
+    }
+    return item_prices
 
 @login_required
 def revenue_create_view(request):
-    business_settings = BusinessSettings.objects.get_or_create(business=request.user.business)[0]
+    business = get_user_business(request.user.business)
+    business_settings = BusinessSettings.objects.get(business=request.user.business)
+    TransactionItemFormSet = formset_factory(TransactionItemForm, extra=1)
+    item_prices_json = get_item_prices_json(request.user.business)
+
 
     if request.method == 'POST':
         form = TransactionForm(request.POST, user=request.user)
-        # No need to pass branch_id here anymore via form_kwargs
-        formset = TransactionItemFormSet(request.POST, prefix='items')
+        
+        selected_branch = None
+        if request.POST.get('branch'):
+            try:
+                selected_branch = Branch.objects.get(id=request.POST.get('branch'), business=request.user.business)
+            except Branch.DoesNotExist:
+                messages.error(request, 'Invalid branch selected.')
+                # If branch is invalid, we can't proceed, re-render form
+                formset = TransactionItemFormSet(request.POST, prefix='items',
+                                                 form_kwargs={'business': request.user.business, 'branch': None}) # Pass None if branch is invalid
+                context = {
+                    'form': form, 'formset': formset, 'business_settings': business_settings, 'item_prices_json': item_prices_json
+                }
+                return render(request, 'home/add_revenue.html', context)
+
+
+        formset = TransactionItemFormSet(request.POST, prefix='items',
+                                         form_kwargs={'business': request.user.business, 'branch': selected_branch})
+
 
         if form.is_valid() and formset.is_valid():
             with db_transaction.atomic():
-                customer = None
-                customer_selection_type = form.cleaned_data.get('customer_selection_type')
-                branch = form.cleaned_data.get('branch') # Get the selected branch object
+                transaction_obj = form.save(commit=False) 
+
+                customer_selection_type = form.cleaned_data['customer_selection_type']
+                customer = None 
 
                 if customer_selection_type == 'new':
-                    full_name = form.cleaned_data.get('new_customer_name')
-                    phone = form.cleaned_data.get('new_customer_phone')
-                    email = form.cleaned_data.get('new_customer_email')
-                    address = form.cleaned_data.get('new_customer_address')
-                    gender = form.cleaned_data.get('new_customer_gender')
-
-                    if phone:
-                        existing_party = Party.objects.filter(business=request.user.business, type='customer', phone=phone).first()
-                        if existing_party:
-                            customer = existing_party
-                            messages.info(request, f"Customer with phone {phone} already exists. Using existing record.")
-                            customer.full_name = full_name # Update name
-                            customer.email = email # Update email
-                            customer.address = address # Update address
-                            customer.gender = gender # Update gender
-                            customer.save()
-                        else:
-                            customer = Party.objects.create(
-                                type='customer',
-                                full_name=full_name,
-                                phone=phone,
-                                email=email,
-                                address=address,
-                                gender=gender,
-                                branch=branch,
-                                business=request.user.business,
-                            )
-                    else:
-                        customer = Party.objects.create(
-                                type='customer',
-                                full_name=full_name + " (Anonymous Walk-in)",
-                                branch=branch,
-                                business=request.user.business,
-                            )
-                        messages.warning(request, "No phone number provided for new customer. Loyalty points cannot be tracked for this individual.")
-                else:
-                    customer = form.cleaned_data.get('existing_customer')
-                    if not customer:
-                        messages.error(request, 'Please select an existing customer.')
-                        # Re-render with errors
-                        all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
-                        item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
-                        context = {
-                            'form': form,
-                            'formset': formset,
-                            'business_settings': business_settings,
-                            'item_prices_json': item_prices_json
-                        }
-                        return render(request, 'home/add_revenue.html', context)
-
-
-                transaction = form.save(commit=False)
-                transaction.transaction_type = 'revenue'
-                transaction.party = customer
-                transaction.created_by = request.user
-                
-                total_amount = 0
-                transaction_items_to_save = []
-                for item_form in formset:
-                    if item_form.cleaned_data.get('DELETE', False):
-                        if item_form.instance.pk: # Only delete if it's an existing item
-                            item_form.instance.delete()
-                        continue
-                    
-                    if item_form.is_valid():
-                        item = item_form.cleaned_data['item']
-                        quantity = item_form.cleaned_data['quantity']
-                        total_amount += item.selling_price * quantity
-                        transaction_item = item_form.save(commit=False)
-                        transaction_items_to_save.append(transaction_item)
-                    elif item_form.errors:
-                        print("Individual Item Form Errors:", item_form.errors)
-                        messages.error(request, "Error in one or more item entries.")
-                        all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
-                        item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
-                        context = {
-                            'form': form,
-                            'formset': formset,
-                            'business_settings': business_settings,
-                            'item_prices_json': item_prices_json
-                        }
-                        return render(request, 'home/add_revenue.html', context)
-
-                if not transaction_items_to_save and not formset.deleted_forms:
-                    messages.error(request, 'No items were added to the purchase.')
-                    all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
-                    item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
-                    context = {
-                        'form': form,
-                        'formset': formset,
-                        'business_settings': business_settings,
-                        'item_prices_json': item_prices_json
+                    party_data = {
+                        'business': request.user.business,
+                        'full_name': form.cleaned_data['new_customer_name'],
+                        'phone': form.cleaned_data['new_customer_phone'],
+                        'email': form.cleaned_data['new_customer_email'],
+                        'address': form.cleaned_data['new_customer_address'],
+                        'gender': form.cleaned_data['new_customer_gender'],
+                        'type': 'customer', 
+                        'branch': selected_branch, # Link new customer to the selected transaction branch
+                        'loyalty_points': 0, 
                     }
-                    return render(request, 'home/add_revenue.html', context)
-
-                coupon = form.cleaned_data.get('coupon')
-                if coupon:
-                    is_valid, msg = coupon.is_valid(transaction_total=total_amount)
-                    if is_valid:
-                        transaction.discount_amount = coupon.calculate_discount(total_amount)
-                        total_amount -= transaction.discount_amount
-                        coupon.times_used += 1
-                        coupon.save()
+                    
+                    _created = False
+                    if party_data['phone']:
+                        customer, _created = Party.objects.get_or_create(
+                            phone=party_data['phone'],
+                            business=party_data['business'],
+                            defaults=party_data
+                        )
+                    elif party_data['email']:
+                        customer, _created = Party.objects.get_or_create(
+                            email=party_data['email'],
+                            business=party_data['business'],
+                            defaults=party_data
+                        )
+                    else: 
+                        customer = Party.objects.create(**party_data)
+                        _created = True
+                        
+                    if not _created:
+                        for key, value in party_data.items():
+                            if key not in ['business', 'phone', 'email']:
+                                setattr(customer, key, value)
+                        customer.save()
+                        messages.info(request, f"Existing customer '{customer.full_name}' updated successfully.")
                     else:
-                        messages.warning(request, f"Coupon '{coupon.code}' could not be applied: {msg}")
-                        transaction.coupon = None
+                        messages.info(request, f"New customer '{customer.full_name}' created successfully.")
 
-                transaction.amount = total_amount
+                else: # customer_selection_type == 'existing'
+                    customer = form.cleaned_data['existing_customer']
+                    if not customer: 
+                        messages.error(request, 'No existing customer was selected. Please select one.')
+                        context = {
+                            'form': form, 'formset': formset, 'business_settings': business_settings, 'item_prices_json': item_prices_json
+                        }
+                        return render(request, 'home/add_revenue.html', context)
 
-                if transaction.party and transaction.party.phone:
-                    points_earned = int(total_amount / float(business_settings.loyalty_points_per_ugx_spent))
-                    transaction.loyalty_points_earned = points_earned
-                    transaction.party.loyalty_points += points_earned
-                    transaction.party.save()
-                else:
-                    transaction.loyalty_points_earned = 0
-                    messages.info(request, "No loyalty points earned for this transaction as customer details are incomplete.")
+                # Assign customer and other initial transaction details
+                transaction_obj.party = customer 
+                transaction_obj.transaction_type = 'revenue' 
+                transaction_obj.created_by = request.user
+                transaction_obj.branch = selected_branch 
+                transaction_obj.status = 'completed' # Set initial status for new transaction
 
-                transaction.save()
 
-                for tx_item in transaction_items_to_save:
-                    tx_item.transaction = transaction
-                    tx_item.save()
+                sub_total = 0 
+                transaction_items_to_save = [] 
+                
+                for item_form in formset:
+                    if item_form.cleaned_data.get('DELETE'):
+                        continue
+                    item = item_form.cleaned_data['item']
+                    quantity = item_form.cleaned_data['quantity']
+                    
+                    sub_total += item.selling_price * quantity
 
-                messages.success(request, 'Customer purchase recorded successfully.')
-                return redirect('receipt_detail', transaction_id=transaction.id)
+                    transaction_item = item_form.save(commit=False)
+                    transaction_item.item = item 
+                    transaction_item.quantity = quantity 
+                    transaction_item.transaction = transaction_obj 
+                    transaction_items_to_save.append(transaction_item)
 
-        else:
-            messages.error(request, 'There was an error saving the form. Please check and try again.')
-            print("Main Form Errors:", form.errors)
-            print("Formset Errors:", formset.errors)
+                total_discount_amount = 0 
+                coupon_applied_obj = None 
+                loyalty_points_redeemed_current_transaction = 0
+                loyalty_points_earned_current_transaction = 0
+
+                coupon_applied_obj = form.cleaned_data.get('coupon') 
+                
+                if business_settings.enable_coupon_codes and coupon_applied_obj: 
+                    discount_value_from_coupon = 0
+                    if coupon_applied_obj.discount_type == 'percentage':
+                        discount_value_from_coupon = (sub_total * coupon_applied_obj.discount_value) / 100
+                        if coupon_applied_obj.max_discount_amount and discount_value_from_coupon > coupon_applied_obj.max_discount_amount:
+                            discount_value_from_coupon = coupon_applied_obj.max_discount_amount
+                    elif coupon_applied_obj.discount_type == 'fixed':
+                        discount_value_from_coupon = coupon_applied_obj.discount_value
+                    
+                    total_discount_amount += discount_value_from_coupon
+                    messages.success(request, f"Coupon '{coupon_applied_obj.code}' applied successfully!")
+                
+                transaction_obj.coupon = coupon_applied_obj
+
+                if business_settings.enable_loyalty_point_redemption and form.cleaned_data.get('redeem_loyalty_points') and customer:
+                    required_points = business_settings.loyalty_points_required_for_redemption
+                    if customer.loyalty_points >= required_points:
+                        if business_settings.loyalty_redemption_is_branch_specific and \
+                           customer.branch and customer.branch != transaction_obj.branch:
+                            messages.warning(request, "Loyalty points can only be redeemed at the customer's home branch.")
+                        else:
+                            loyalty_discount_value = business_settings.loyalty_redemption_discount_value
+                            loyalty_discount_amount = 0
+                            remaining_total_for_loyalty = sub_total - total_discount_amount
+
+                            if business_settings.loyalty_redemption_discount_type == 'percentage':
+                                loyalty_discount_amount = (remaining_total_for_loyalty * loyalty_discount_value) / 100
+                                if business_settings.loyalty_redemption_max_discount_amount and loyalty_discount_amount > business_settings.loyalty_redemption_max_discount_amount:
+                                    loyalty_discount_amount = business_settings.loyalty_redemption_max_discount_amount
+                            elif business_settings.loyalty_redemption_discount_type == 'fixed':
+                                loyalty_discount_amount = loyalty_discount_value
+
+                            loyalty_discount_amount = min(loyalty_discount_amount, remaining_total_for_loyalty)
+                            
+                            total_discount_amount += loyalty_discount_amount 
+                            loyalty_points_redeemed_current_transaction = required_points 
+                            customer.loyalty_points -= required_points 
+                            customer.save() 
+                            messages.success(request, f"Loyalty points redeemed for UGX {intcomma(loyalty_discount_amount)} discount.")
+                    else:
+                        messages.warning(request, f"Customer does not have enough loyalty points to redeem. Required: {required_points}, Has: {customer.loyalty_points}.")
+                
+                transaction_obj.discount_amount = total_discount_amount
+
+                final_amount = sub_total - total_discount_amount
+                if final_amount < 0:
+                    final_amount = 0 
+                
+                transaction_obj.amount = final_amount 
+
+                transaction_obj.loyalty_points_redeemed = loyalty_points_redeemed_current_transaction
+
+                transaction_obj.save() # Save transaction_obj for the first time
+
+                for transaction_item in transaction_items_to_save:
+                    transaction_item.transaction = transaction_obj 
+                    transaction_item.save()
+
+                # Loyalty Point Earning logic
+                if customer: # Ensure customer exists for loyalty
+                    if business_settings.enable_loyalty_point_earning: # Use the correct field here
+                        if business_settings.loyalty_points_per_ugx_spent and business_settings.loyalty_points_per_ugx_spent > 0:
+                            points_earned = int(final_amount / business_settings.loyalty_points_per_ugx_spent)
+                        else:
+                            points_earned = 0 # Cannot earn points if setting is 0 or invalid
+                        
+                        customer.loyalty_points += points_earned
+                        transaction_obj.loyalty_points_earned = points_earned 
+                        customer.save() # Save customer with updated points
+                        # Only update loyalty_points_earned on transaction_obj if it changed (it will have)
+                        transaction_obj.save(update_fields=['loyalty_points_earned']) 
+                    else:
+                        transaction_obj.loyalty_points_earned = 0 # Explicitly set to 0 if earning is disabled
+                        transaction_obj.save(update_fields=['loyalty_points_earned']) 
+
+                messages.success(request, 'Customer purchase recorded successfully!')
+                return redirect(reverse('revenue_list'))
+
+        else: # Form or Formset is not valid
+            context = {
+                'form': form,
+                'formset': formset,
+                'business_settings': business_settings,
+                'item_prices_json': item_prices_json,
+            }
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f"Form Error - '{form[field].label or field}': {error}")
+            for i, fs_errors in enumerate(formset.errors):
+                if fs_errors: 
+                    messages.error(request, f"Item {i+1} Errors:")
+                    for field, errors in fs_errors.items():
+                        for error in errors:
+                            messages.error(request, f"  '{formset[i][field].label or field}': {error}")
+            
+            return render(request, 'home/add_revenue.html', context)
+
+
     else: # GET request
         form = TransactionForm(user=request.user)
-        # No form_kwargs for branch_id here anymore
-        formset = TransactionItemFormSet(prefix='items')
-    
-    all_items_data = Item.objects.filter(business=request.user.business).values('id', 'selling_price')
-    item_prices_json = {str(item['id']): float(item['selling_price']) for item in all_items_data}
+        formset = TransactionItemFormSet(prefix='items', form_kwargs={'business': request.user.business, 'branch': None})
 
     context = {
         'form': form,
@@ -246,42 +507,6 @@ def revenue_create_view(request):
     }
     return render(request, 'home/add_revenue.html', context)
 
-@login_required
-def revenue_list_view(request):
-    business = request.user.business
-    branches = Branch.objects.filter(business=business).order_by('name')  # or any ordering
-
-    if not branches.exists():
-        return render(request, 'home/revenue.html', {
-            'branches': [],
-            'selected_branch': None,
-            'transactions': None,
-        })
-
-    # Get selected branch from URL or use first available
-    selected_branch_id = request.GET.get('branch')
-    if selected_branch_id:
-        selected_branch = get_object_or_404(Branch, id=selected_branch_id, business=business)
-    else:
-        selected_branch = branches.first()
-
-    transactions_qs = (
-        Transaction.objects
-        .filter(branch=selected_branch, transaction_type='revenue')
-        .prefetch_related('transaction_items__item', 'party')
-        .order_by('-created_at')
-    )
-
-    paginator = Paginator(transactions_qs, 20)
-    page_number = request.GET.get('page')
-    transactions = paginator.get_page(page_number)
-
-    context = {
-        'branches': branches,
-        'selected_branch': selected_branch,
-        'transactions': transactions,
-    }
-    return render(request, 'home/revenue.html', context)
 
 def login_view(request):
     form = LoginForm(request.POST or None)
@@ -434,23 +659,23 @@ def add_service_product_view(request):
     form_errors = []
     if request.method == 'POST':
         logger.debug("POST data: %s", request.POST)
-        item_type = request.POST.get('item_type')
+        type = request.POST.get('type')
         name = request.POST.get('name', '').strip()
         selling_price = request.POST.get('selling_price')
         cost_price = request.POST.get('cost_price')
 
         # Validation
-        if not item_type:
+        if not type:
             form_errors.append("Item Type is required.")
         if not name:
             form_errors.append("Name is required.")
         if not selling_price:
             form_errors.append("Selling Price is required.")
-        if item_type == 'product' and not cost_price:
+        if type == 'product' and not cost_price:
             form_errors.append("Cost Price is required for products.")
 
         if not form_errors:
-            if item_type not in ['service', 'product']:
+            if type not in ['service', 'product']:
                 form_errors.append("Invalid item type selected.")
             else:
                 try:
@@ -465,18 +690,18 @@ def add_service_product_view(request):
 
                 # Check for duplicate item
                 if not form_errors and Item.objects.filter(business=business, name=name, type=item_type).exists():
-                    form_errors.append(f"A {item_type} named '{name}' already exists for this business.")
+                    form_errors.append(f"A {type} named '{name}' already exists for this business.")
 
                 if not form_errors:
                     try:
                         Item.objects.create(
                             business=business,
-                            type=item_type,
+                            type=type,
                             name=name,
                             selling_price=selling_price,
-                            cost_price=cost_price if item_type == 'product' else None
+                            cost_price=cost_price if type == 'product' else None
                         )
-                        logger.info("Created item: %s (%s) for business %s", name, item_type, business)
+                        logger.info("Created item: %s (%s) for business %s", name, type, business)
                         return redirect('services-products')
                     except Exception as e:
                         form_errors.append(f"Error creating item: {str(e)}")
@@ -500,7 +725,7 @@ def edit_service_product_view(request, item_id):
         name = request.POST.get('name')
         selling_price = request.POST.get('selling-price')
         cost_price = request.POST.get('cost-price')
-        item_type = request.POST.get('item-type')
+        item_type = request.POST.get('type')
 
         if not name or not selling_price or (item_type == 'product' and not cost_price):
             form_errors.append("All required fields must be filled. Cost price is required for products.")
@@ -547,6 +772,75 @@ def get_user_business(user):
     elif hasattr(user, 'branchemployee'):
         return user.branchemployee.branch.business
     return None
+
+# NEW VIEW FOR VOIDING TRANSACTIONS
+@login_required
+def transaction_void_view(request, pk):
+    # Ensure only transactions for the user's business can be voided
+    transaction = get_object_or_404(
+        Transaction, 
+        pk=pk, 
+        created_by__business=request.user.business,
+        transaction_type='revenue' # Only allow voiding revenue transactions from this view
+    )
+
+    if request.method == 'POST':
+        if transaction.mark_as_voided(request.user):
+            messages.success(request, f"Transaction #{transaction.id} has been voided.")
+            # TODO: Add logic here to reverse inventory, loyalty points, etc. if needed
+            # This is complex and depends on your business rules.
+            # For now, it just marks the transaction.
+        else:
+            messages.warning(request, f"Transaction #{transaction.id} cannot be voided (current status: {transaction.status}).")
+        return redirect(reverse('revenue_list') + f"?branch={transaction.branch.id}") # Redirect to the same branch list
+
+    # For GET request, just display a confirmation page (optional)
+    context = {
+        'transaction': transaction
+    }
+    return render(request, 'home/transaction_void_confirm.html', context) # Create this template
+
+# revenue_list_view (updated)
+@login_required
+def revenue_list_view(request):
+    business = request.user.business
+    branches = Branch.objects.filter(business=business).order_by('name')
+
+    if not branches.exists():
+        return render(request, 'home/revenue.html', {
+            'branches': [],
+            'selected_branch': None,
+            'transactions': None,
+        })
+
+    selected_branch_id = request.GET.get('branch')
+    if selected_branch_id:
+        selected_branch = get_object_or_404(Branch, id=selected_branch_id, business=business)
+    else:
+        selected_branch = branches.first()
+
+    # Filter transactions to only show 'completed' ones by default,
+    # or allow users to view 'voided'/'refunded' if needed via a filter.
+    # For now, display all for demonstration, but production might filter.
+    transactions_qs = (
+        Transaction.objects
+        .filter(branch=selected_branch, transaction_type='revenue')
+        .prefetch_related('transaction_items__item', 'party')
+        .order_by('-created_at')
+    )
+
+    paginator = Paginator(transactions_qs, 20)
+    page_number = request.GET.get('page')
+    transactions = paginator.get_page(page_number)
+
+    context = {
+        'branches': branches,
+        'selected_branch': selected_branch,
+        'transactions': transactions,
+        'intcomma': intcomma # Pass intcomma to context for use outside loop if needed
+    }
+    return render(request, 'home/revenue.html', context)
+
 
 @login_required
 def employees_view(request):

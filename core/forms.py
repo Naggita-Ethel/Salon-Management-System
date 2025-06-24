@@ -1,14 +1,12 @@
 from datetime import timezone
 from django import forms
-from .models import Branch, BranchEmployee, Business, Coupon, Party, Transaction, TransactionItem, User, UserRole
+from .models import Branch, BranchEmployee, Business, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
-# In forms.py
 
 class TransactionForm(forms.ModelForm):
-    # Simplified customer choices
     CUSTOMER_CHOICES = [
         ('existing', 'Existing Customer'),
         ('new', 'New Customer (for walk-ins or new credit customers)'),
@@ -17,55 +15,57 @@ class TransactionForm(forms.ModelForm):
     customer_selection_type = forms.ChoiceField(
         choices=CUSTOMER_CHOICES,
         label="Customer Type",
-        initial='new', # Default to 'new' for quick walk-in capture
+        initial='new',
         widget=forms.Select(attrs={'id': 'id_customer_selector'})
     )
     existing_customer = forms.ModelChoiceField(
-        queryset=Party.objects.none(), # Populated dynamically
+        queryset=Party.objects.none(),
         required=False,
         label="Select Existing Customer",
         widget=forms.Select(attrs={'id': 'id_existing_customer'})
     )
     
-    # These fields will be used for 'new' customer selection or to update details
-    # Make phone required for loyalty, but not for the form submission itself,
-    # rather in the clean method if loyalty is being applied.
     new_customer_name = forms.CharField(max_length=100, required=False, label="Full Name")
-    new_customer_phone = forms.CharField(max_length=15, required=False, label="Phone Number") # Make it clear it's for loyalty
+    new_customer_phone = forms.CharField(max_length=15, required=False, label="Phone Number")
     new_customer_email = forms.EmailField(required=False, label="Email")
-    new_customer_address = forms.CharField(widget=forms.Textarea, required=False, label="Address")
+    new_customer_address = forms.CharField(
+        max_length=255, 
+        required=False,
+        label="Address",
+        widget=forms.TextInput(attrs={'class': 'form-control'})
+    )
     new_customer_gender = forms.ChoiceField(choices=User.GENDER_CHOICES, required=False, label="Gender")
+
+    redeem_loyalty_points = forms.BooleanField(
+        required=False,
+        label="Redeem Loyalty Points?",
+        widget=forms.CheckboxInput(attrs={'id': 'id_redeem_loyalty_points'})
+    )
 
     coupon_code = forms.CharField(max_length=50, required=False, help_text="Enter coupon code if applicable.")
     
-    # Field to select the primary employee for the entire transaction (e.g., the cashier)
-    serviced_by = forms.ModelChoiceField(
-        queryset=BranchEmployee.objects.none(), # Will be filtered by branch
-        required=False, # Make optional if a transaction doesn't always have one main employee
-        label="Main Employee Servicing"
-    )
-
     class Meta:
         model = Transaction
-        fields = [
-            'branch', 'payment_method', 'is_paid',
-            'customer_selection_type', 'existing_customer',
-            'new_customer_name', 'new_customer_phone', 'new_customer_email',
-            'new_customer_address', 'new_customer_gender',
-            'coupon_code', 'serviced_by'
-        ]
+        fields = ['branch', 'payment_method', 'is_paid']
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
         if user:
             self.fields['branch'].queryset = Branch.objects.filter(business=user.business)
             self.fields['existing_customer'].queryset = Party.objects.filter(business=user.business, type='customer').order_by('full_name')
-            self.fields['serviced_by'].queryset = BranchEmployee.objects.filter(branch__business=user.business, status='active')
 
-        # Initializing `serviced_by` field based on the transaction's existing value
-        if self.instance and self.instance.serviced_by:
-            self.initial['serviced_by'] = self.instance.serviced_by.pk
-
+        if self.instance and self.instance.pk and self.instance.party:
+            self.fields['customer_selection_type'].initial = 'existing'
+            self.fields['existing_customer'].initial = self.instance.party.pk
+            self.fields['new_customer_name'].initial = self.instance.party.full_name
+            self.fields['new_customer_phone'].initial = self.instance.party.phone
+            self.fields['new_customer_email'].initial = self.instance.party.email
+            self.fields['new_customer_address'].initial = self.instance.party.address
+            self.fields['new_customer_gender'].initial = self.instance.party.gender
+            
+            if self.instance.coupon:
+                self.fields['coupon_code'].initial = self.instance.coupon.code
+            
     def clean(self):
         cleaned_data = super().clean()
         customer_selection_type = cleaned_data.get('customer_selection_type')
@@ -73,51 +73,78 @@ class TransactionForm(forms.ModelForm):
         new_customer_name = cleaned_data.get('new_customer_name')
         new_customer_phone = cleaned_data.get('new_customer_phone')
         
-        party = None
-
+        # Validation for customer selection
         if customer_selection_type == 'existing':
             if not existing_customer:
                 self.add_error('existing_customer', "Please select an existing customer.")
-            party = existing_customer
         elif customer_selection_type == 'new':
             if not new_customer_name:
                 self.add_error('new_customer_name', "Full Name is required for a new customer.")
-            # If phone is provided, check for uniqueness for new customers to avoid duplicates
-            if new_customer_phone:
-                if Party.objects.filter(business=self.cleaned_data['branch'].business, type='customer', phone=new_customer_phone).exists():
-                    self.add_error('new_customer_phone', "A customer with this phone number already exists. Please select them from existing customers or use a different number.")
             
-            # For new customers, `party` will be created in the view.
-            # For now, we store necessary info in cleaned_data:
-            cleaned_data['party'] = None # Placeholder; actual Party object will be created/assigned in the view
+            # Phone uniqueness check
+            if new_customer_phone:
+                business = None
+                selected_branch_id = self.data.get('branch') # Use self.data because it might not be in cleaned_data yet
+                if selected_branch_id:
+                    try:
+                        business = Branch.objects.get(id=selected_branch_id).business
+                    except Branch.DoesNotExist:
+                        pass # Handled by branch field validation already
+                
+                if business:
+                    exclude_pk = None
+                    # If this form is for an existing transaction being edited, and it has a party,
+                    # and that party's phone matches the new_customer_phone, exclude it from the check.
+                    if self.instance and self.instance.pk and self.instance.party and self.instance.party.phone == new_customer_phone:
+                        exclude_pk = self.instance.party.pk
 
-        # Coupon validation (as previously discussed, can stay here)
+                    if Party.objects.filter(business=business, type='customer', phone=new_customer_phone).exclude(pk=exclude_pk).exists():
+                        self.add_error('new_customer_phone', "A customer with this phone number already exists. Please select them from existing customers or use a different number.")
+                else:
+                    # If no business could be determined (e.g., branch not selected), cannot perform phone uniqueness check accurately
+                    # This might happen if branch field itself is invalid
+                    pass # The view will handle overall form validity, including branch.
+        else:
+            self.add_error('customer_selection_type', "Invalid customer selection type.")
+
+
+        # Coupon validation (initial check only)
         coupon_code = cleaned_data.get('coupon_code')
         if coupon_code:
             try:
-                coupon = Coupon.objects.get(
-                    code=coupon_code,
-                    is_active=True,
-                    valid_from__lte=timezone.now(),
-                    valid_until__gte=timezone.now(),
-                    # Add branch filtering if coupons are branch-specific
-                    # branch=cleaned_data.get('branch')
-                )
+                business = None
+                selected_branch_id = self.data.get('branch')
+                if selected_branch_id:
+                    try:
+                        business = Branch.objects.get(id=selected_branch_id).business
+                    except Branch.DoesNotExist:
+                        pass
                 
-                if coupon.usage_limit is not None and coupon.times_used >= coupon.usage_limit:
-                    self.add_error('coupon_code', "Coupon has reached its usage limit.")
-                
-                cleaned_data['coupon'] = coupon
+                if business:
+                    coupon = Coupon.objects.get(
+                        code=coupon_code,
+                        business=business,
+                        is_active=True,
+                        valid_from__lte=timezone.now(),
+                    )
+                    cleaned_data['coupon'] = coupon # Store the coupon object if valid
+                else:
+                    self.add_error('coupon_code', "Invalid branch selected, cannot validate coupon.")
             except Coupon.DoesNotExist:
                 self.add_error('coupon_code', "Invalid or expired coupon code.")
         else:
-            cleaned_data['coupon'] = None
-        
-        return cleaned_data
+            cleaned_data['coupon'] = None # Ensure it's explicitly None if no code
+
+        return cleaned_data # <--- No 'customer_party' or 'party' assignment here
 
 class TransactionItemForm(forms.ModelForm):
+    item = forms.ModelChoiceField(
+        queryset=Item.objects.none(), # Will be set in __init__
+        required=True,
+        label="Item"
+    )
     employee = forms.ModelChoiceField(
-        queryset=BranchEmployee.objects.none(), # Keep this empty by default
+        queryset=BranchEmployee.objects.none(), # Will be set in __init__
         required=False,
         label="Serviced By"
     )
@@ -127,28 +154,26 @@ class TransactionItemForm(forms.ModelForm):
         fields = ['item', 'quantity', 'employee']
 
     def __init__(self, *args, **kwargs):
-        # Remove branch_id from kwargs.pop('branch_id', None)
+        business = kwargs.pop('business', None)
+        branch = kwargs.pop('branch', None) # Get the branch object passed from the view
+
         super().__init__(*args, **kwargs)
 
-        # For existing transaction items (e.g., if you were editing a saved transaction)
-        # We can still keep this for the *display* of existing data,
-        # but for new forms, JS will handle it.
-        # However, to avoid the error on GET, if `self.instance` exists but has no `transaction`,
-        # we still want a safe default.
-        if self.instance and self.instance.pk: # Only if it's a *saved* instance
-            if self.instance.transaction and self.instance.transaction.branch:
-                self.fields['employee'].queryset = BranchEmployee.objects.filter(
-                    branch=self.instance.transaction.branch, status='active'
-                )
-            else:
-                # If an existing item somehow has no transaction or branch, fall back to empty
-                self.fields['employee'].queryset = BranchEmployee.objects.none()
+        if business:
+            self.fields['item'].queryset = Item.objects.filter(business=business).order_by('name')
         else:
-            # For new, unsaved forms (both on GET and dynamically added via JS)
-            # The queryset remains empty. JavaScript will populate it.
+            self.fields['item'].queryset = Item.objects.none()
+
+        # Crucial for employee dropdown:
+        if branch: # If a branch is selected/provided
+            self.fields['employee'].queryset = BranchEmployee.objects.filter(
+                branch=branch, status='active'
+            ).select_related('user').order_by('user__full_name')
+            self.fields['employee'].widget.attrs.pop('disabled', None) # Remove disabled if branch is set
+        else:
             self.fields['employee'].queryset = BranchEmployee.objects.none()
-            # It's good practice to disable the field until a branch is selected
-            self.fields['employee'].widget.attrs['disabled'] = 'disabled'
+            # self.fields['employee'].widget.attrs['disabled'] = 'disabled' # Keep disabled if no branch
+            self.fields['employee'].help_text = 'Select a branch first to see employees.'
 
 
 class BusinessRegisterForm(UserCreationForm):

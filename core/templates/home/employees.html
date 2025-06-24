@@ -31,6 +31,17 @@
     </div>
 </div>
 
+<!-- Branch Filter -->
+<div class="my-3">
+    <div class="d-flex flex-wrap gap-2">
+        {% for branch in branches %}
+            <a href="?branch={{ branch.id }}" class="btn btn-sm {% if selected_branch and branch.id == selected_branch.id %}btn-primary{% else %}btn-outline-primary{% endif %}">
+                {{ branch.name }}
+            </a>
+        {% endfor %}
+    </div>
+</div>
+
 {% if branches %}
     {% for branch in branches %}
     <div class="card border-0 shadow mb-4">

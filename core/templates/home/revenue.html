@@ -1,6 +1,29 @@
 {% extends "layouts/base.html" %}
+{% load humanize %} {# Load humanize tags here #}
+
 {% block title %} Customer Purchases {% endblock %}
-{% block stylesheets %}{% endblock stylesheets %}
+
+{% block stylesheets %}
+<style>
+    /* Basic styling for dropdowns to make them look like buttons if desired */
+    .status-dropdown, .payment-status-toggle {
+        cursor: pointer;
+        /* You can add more styling here to match your theme */
+    }
+    .status-dropdown .dropdown-toggle::after {
+        display: none; /* Hide default caret */
+    }
+
+    /* Style for the receipt iframe within the modal */
+    #receiptModalIframe {
+        width: 100%;
+        height: calc(100vh - 200px); /* Adjust height as needed, accounting for modal header/footer */
+        border: none;
+        background-color: #f8f9fa; /* Match receipt body background for seamless look */
+    }
+</style>
+{% endblock stylesheets %}
+
 {% block content %}
 
 <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center py-4">
@@ -23,7 +46,7 @@
         <p class="mb-0">Track all revenue-generating customer visits, product and service purchases.</p>
     </div>
     <div class="btn-toolbar mb-2 mb-md-0">
-        <a href="{% url 'revenue_create' %}" class="btn btn-sm btn-gray-800 d-inline-flex align-items-center">
+        <a href="{% url 'revenue_create' %}" class="btn btn-sm btn-gray-800 d-inline-flex align-items-center" style="background-color: #F8BD7A; color: #262B40; border: none;">
             <svg class="icon icon-xs me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
             </svg>
@@ -32,7 +55,6 @@
     </div>
 </div>
 
-<!-- Branch Filter -->
 <div class="my-3">
     <div class="d-flex flex-wrap gap-2">
         {% for branch in branches %}
@@ -43,7 +65,6 @@
     </div>
 </div>
 
-<!-- Revenue Transactions Table -->
 {% if selected_branch %}
     <div class="card card-body border-0 shadow table-wrapper table-responsive mt-3">
         {% if transactions %}
@@ -55,9 +76,11 @@
                         <th>Items Purchased</th>
                         <th>Payment Method</th>
                         <th>Amount</th>
-                        <th>Status</th>
+                        <th>Transaction Date</th>
+                        <th>Transaction Status</th> 
+                        <th>Payment Status</th> 
                         <th>Paid At</th>
-                        <th>Actions</th>
+                        <th>Actions</th> {# This column will now be for "Generate Receipt" button #}
                     </tr>
                 </thead>
                 <tbody>
@@ -74,36 +97,59 @@
                             </td>
                             <td>
                                 {% for tx_item in tx.transaction_items.all %}
-                                    • {{ tx_item.item.name }} ({{ tx_item.item.category }}) × {{ tx_item.quantity }}<br>
+                                    • {{ tx_item.item.name }} ({{ tx_item.quantity }})
+                                    {% if tx_item.employee %}{% endif %}<br>
                                 {% empty %}
                                     <em>No items recorded</em>
                                 {% endfor %}
                             </td>
                             <td>{{ tx.payment_method }}</td>
-                            <td>UGX {{ tx.amount }}</td>
+                            <td>UGX {{ tx.amount|intcomma }}</td> 
+                            <td>{{ tx.created_at|date:"Y-m-d H:i" }}</td>
+                            
+                            {# Transaction Status Column - Now with Dropdown #}
                             <td>
-                                {% if tx.is_paid %}
-                                    <span class="badge bg-success">Paid</span>
+                                <div class="dropdown">
+                                    <button class="btn btn-sm {% if tx.status == 'completed' %}btn-success{% elif tx.status == 'voided' %}btn-danger{% elif tx.status == 'refunded' %}btn-info{% else %}btn-secondary{% endif %} dropdown-toggle status-dropdown" 
+                                            type="button" id="dropdownStatus{{ tx.id }}" data-bs-toggle="dropdown" aria-expanded="false"
+                                            {% if tx.status != 'completed' %}disabled{% endif %}>
+                                        {{ tx.status|capfirst }}
+                                    </button>
+                                    {% if tx.status == 'completed' %}
+                                        <ul class="dropdown-menu" aria-labelledby="dropdownStatus{{ tx.id }}">
+                                            <li><a class="dropdown-item update-status" href="#" data-tx-id="{{ tx.id }}" data-new-status="voided">Void</a></li>
+                                            <li><a class="dropdown-item update-status" href="#" data-tx-id="{{ tx.id }}" data-new-status="refunded">Refund</a></li>
+                                        </ul>
+                                    {% endif %}
+                                </div>
+                            </td>
+                            
+                            {# Payment Status Column - Now with Toggle Switch #}
+                            <td>
+                                <div class="form-check form-switch">
+                                    <input class="form-check-input payment-status-toggle" type="checkbox" id="paymentStatus{{ tx.id }}" 
+                                           data-tx-id="{{ tx.id }}" {% if tx.is_paid %}checked{% endif %}>
+                                    <label class="form-check-label" for="paymentStatus{{ tx.id }}">
+                                        {% if tx.is_paid %}Paid{% else %}Pending{% endif %}
+                                    </label>
+                                </div>
+                            </td>
+
+                            {# Paid At Column #}
+                            <td>
+                                {% if tx.is_paid and tx.paid_at %}
+                                    {{ tx.paid_at|date:"Y-m-d H:i" }}
                                 {% else %}
-                                    <span class="badge bg-warning">Pending</span>
+                                    <em>N/A</em>
                                 {% endif %}
                             </td>
-                            <td>{{ tx.paid_at|date:"Y-m-d H:i" }}</td>
+
+                            {# Actions Column: Single "Generate Receipt" button to open modal #}
                             <td>
-                                <div class="btn-group">
-                                    <a href="{% url 'revenue_edit' tx.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
-                                    <a href="{% url 'revenue_delete' tx.id %}" class="btn btn-sm btn-outline-danger"
-                                        onclick="return confirm('Are you sure you want to delete this purchase?');">Delete</a>
-                                    <a href="{% url 'receipt_detail' tx.id %}?preview=true" target="_blank" class="btn btn-sm btn-outline-info">Preview Receipt</a>
-                                    <a href="{% url 'receipt_detail' tx.id %}" class="btn btn-sm btn-outline-success">Download Receipt</a>
-                                </div>
-                            </td>
-                            <td>
-                                <div class="btn-group">
-                                    <a href="{% url 'revenue_edit' tx.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
-                                    <a href="{% url 'revenue_delete' tx.id %}" class="btn btn-sm btn-outline-danger"
-                                       onclick="return confirm('Are you sure you want to delete this purchase?');">Delete</a>
-                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary generate-receipt-button" 
+                                        data-bs-toggle="modal" data-bs-target="#receiptModal" data-tx-id="{{ tx.id }}">
+                                    Generate Receipt
+                                </button>
                             </td>
                         </tr>
                     {% endfor %}
@@ -115,5 +161,168 @@
     </div>
 {% endif %}
 
+{# Bootstrap Modal Structure for Receipt Preview #}
+<div class="modal fade" id="receiptModal" tabindex="-1" aria-labelledby="receiptModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered"> {# modal-xl for large receipt, modal-dialog-centered for vertical alignment #}
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="receiptModalLabel">Receipt Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {# The iframe will load the receipt preview HTML #}
+                <iframe id="receiptModalIframe" src="" title="Receipt Preview"></iframe>
+            </div>
+            <div class="modal-footer">
+                <a id="downloadPdfButton" href="#" target="_blank" class="btn btn-success">Download PDF</a>
+                <button type="button" class="btn btn-primary" onclick="document.getElementById('receiptModalIframe').contentWindow.print()">Print Receipt</button>
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock content %}
-{% block javascripts %}{% endblock javascripts %}
+
+{% block javascripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // CSRF token for AJAX requests
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+        const csrftoken = getCookie('csrftoken');
+
+        // --- Handle Transaction Status Updates (Void/Refund) ---
+        document.querySelectorAll('.update-status').forEach(button => {
+            button.addEventListener('click', function(e) {
+                e.preventDefault();
+                const txId = this.dataset.txId;
+                const newStatus = this.dataset.newStatus;
+                
+                let confirmationMessage = '';
+                if (newStatus === 'voided') {
+                    confirmationMessage = 'Are you sure you want to VOID this transaction? This action will mark it as voided and is generally irreversible.';
+                } else if (newStatus === 'refunded') {
+                    confirmationMessage = 'Are you sure you want to REFUND this transaction? This action will mark it as refunded.';
+                }
+
+                // Using a custom modal instead of alert/confirm as per instructions
+                // You'd replace this with your custom modal UI
+                if (confirm(confirmationMessage)) { 
+                    fetch(`/transactions/${txId}/update_status/`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'X-CSRFToken': csrftoken
+                        },
+                        body: JSON.stringify({ status: newStatus })
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            return response.json().then(err => { throw new Error(err.error || 'Network response was not ok'); });
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        if (data.success) {
+                            alert('Transaction status updated successfully!');
+                            window.location.reload(); 
+                        } else {
+                            alert('Error updating transaction status: ' + data.error);
+                        }
+                    })
+                    .catch(error => {
+                        console.error('There was a problem with the fetch operation:', error);
+                        alert('An error occurred while updating transaction status: ' + error.message);
+                    });
+                }
+            });
+        });
+
+        // --- Handle Payment Status Toggle ---
+        document.querySelectorAll('.payment-status-toggle').forEach(toggle => {
+            toggle.addEventListener('change', function() {
+                const txId = this.dataset.txId;
+                const isPaid = this.checked;
+
+                fetch(`/transactions/${txId}/toggle_payment/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': csrftoken
+                    },
+                    body: JSON.stringify({ is_paid: isPaid })
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        return response.json().then(err => { throw new Error(err.error || 'Network response was not ok'); });
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.success) {
+                        alert('Payment status updated successfully!');
+                        window.location.reload(); 
+                    } else {
+                        alert('Error updating payment status: ' + data.error);
+                        this.checked = !isPaid; // Revert toggle if update fails
+                    }
+                })
+                .catch(error => {
+                    console.error('There was a problem with the fetch operation:', error);
+                    alert('An error occurred while updating payment status: ' + error.message);
+                    this.checked = !isPaid; // Revert toggle on error
+                });
+            });
+        });
+
+        // --- Handle Receipt Modal Logic ---
+        const receiptModal = document.getElementById('receiptModal');
+        const receiptModalIframe = document.getElementById('receiptModalIframe');
+        const downloadPdfButton = document.getElementById('downloadPdfButton');
+
+        if (receiptModal) {
+            receiptModal.addEventListener('show.bs.modal', function (event) {
+                // Button that triggered the modal
+                const button = event.relatedTarget; 
+                // Extract info from data-tx-id attribute
+                const transactionId = button.dataset.txId; 
+
+                if (transactionId) {
+                    // Construct the preview URL
+                    const previewUrl = `/receipt/${transactionId}/?preview=true`;
+                    receiptModalIframe.src = previewUrl; // Set iframe source
+
+                    // Construct the download URL
+                    const downloadUrl = `/receipt/${transactionId}/`;
+                    downloadPdfButton.href = downloadUrl; // Set download button href
+                } else {
+                    console.error('Transaction ID not found for receipt modal.');
+                    receiptModalIframe.src = ''; // Clear iframe
+                    downloadPdfButton.href = '#'; // Clear download link
+                    alert('Error: Could not retrieve transaction details.');
+                    // Consider closing the modal here or showing an error message in modal body
+                }
+            });
+
+            // Optional: Clear iframe src when modal is hidden to stop any potential background loading/memory leaks
+            receiptModal.addEventListener('hidden.bs.modal', function () {
+                receiptModalIframe.src = '';
+                downloadPdfButton.href = '#';
+            });
+        }
+    });
+</script>
+{% endblock javascripts %}

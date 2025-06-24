@@ -1,9 +1,14 @@
 from django.urls import path
-from .views import add_employee_view, add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, get_employees_by_branch, get_items_by_category,  pagelock_view, receipt_view, register_business, revenue_create_view, revenue_list_view, services_products_view, settings_view
+from .views import add_employee_view, add_service_product_view, addbranch_view, branch_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, get_customer_details, get_customer_loyalty_data, get_employees_by_branch, get_items_by_category,  pagelock_view, receipt_view, register_business, revenue_create_view, revenue_list_view, services_products_view, settings_view, toggle_payment_status, transaction_void_view, update_transaction_status
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
+    path('get-customer-details/<int:customer_id>/', get_customer_details, name='get_customer_details'),
+    path('transactions/<int:pk>/update_status/', update_transaction_status, name='update_transaction_status'),
+    path('transactions/<int:pk>/toggle_payment/', toggle_payment_status, name='toggle_payment_status'),
     path('get-employees-by-branch/', get_employees_by_branch, name='get_employees_by_branch'),
+    path('transactions/<int:pk>/void/', transaction_void_view, name='transaction_void'), 
+    path('get-customer-loyalty-data/', get_customer_loyalty_data, name='get_customer_loyalty_data'), 
     path('revenue/', revenue_list_view, name='revenue_list'),
     path('get-items-by-category/', get_items_by_category, name='get_items_by_category'),
     path('revenue/add/', revenue_create_view, name='revenue_create'),

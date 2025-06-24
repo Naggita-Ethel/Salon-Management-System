@@ -1,0 +1,25 @@
+{% extends "layouts/base.html" %}
+{% block title %} Confirm Void Transaction {% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="row">
+        <div class="col-12 col-md-8 offset-md-2 col-lg-6 offset-lg-3">
+            <div class="card card-body shadow border-0">
+                <h2 class="h4 card-title text-danger">Confirm Void Transaction</h2>
+                <p>Are you absolutely sure you want to **VOID** Transaction #{{ transaction.id }}?</p>
+                <p>This action will mark the transaction as voided and is generally **irreversible** for auditing purposes. You may need to manually adjust inventory or other related records.</p>
+                <p><strong>Customer:</strong> {% if transaction.party %}{{ transaction.party.full_name }} ({{ transaction.party.phone }}){% else %}Walk-in{% endif %}</p>
+                <p><strong>Amount:</strong> UGX {{ transaction.amount }}</p>
+                <p><strong>Date:</strong> {{ transaction.created_at|date:"Y-m-d H:i" }}</p>
+                
+                <form method="post" action="{% url 'transaction_void' transaction.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="btn btn-danger mt-3 me-2">Confirm Void</button>
+                    <a href="{% url 'revenue_list' %}" class="btn btn-secondary mt-3">Cancel</a>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
