@@ -1,6 +1,6 @@
 from datetime import timezone
 from django import forms
-from .models import Branch, BranchEmployee, Business, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
+from .models import Branch, BranchEmployee, Business, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -324,3 +324,95 @@ class EditEmployeeForm(forms.Form):
             raise ValidationError("This email is already in use.")
         return email
 
+class BusinessSettingsForm(forms.ModelForm):
+    class Meta:
+        model = BusinessSettings
+        # Specify all fields you want the owner to be able to edit
+        fields = [
+            'enable_loyalty_point_earning',
+            'loyalty_points_per_ugx_spent',
+            'enable_loyalty_point_redemption',
+            'loyalty_points_required_for_redemption',
+            'loyalty_redemption_discount_type',
+            'loyalty_redemption_discount_value',
+            'loyalty_redemption_max_discount_amount',
+            'loyalty_redemption_is_branch_specific',
+            'enable_coupon_codes',
+            'coupon_loyalty_requirement_type',
+            'loyalty_min_spend_for_coupon',
+            'loyalty_min_visits_for_coupon',
+            'coupon_is_branch_specific',
+        ]
+        widgets = {
+            'loyalty_redemption_discount_type': forms.RadioSelect(), # Use radio buttons for discount type
+            'coupon_loyalty_requirement_type': forms.RadioSelect(), # Use radio buttons for loyalty requirement type
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Add Bootstrap classes to all fields
+        for field_name, field in self.fields.items():
+            if isinstance(field.widget, (forms.TextInput, forms.NumberInput, forms.Select, forms.EmailInput, forms.URLInput, forms.DateInput, forms.DateTimeInput, forms.Textarea)):
+                field.widget.attrs.update({'class': 'form-control'})
+            elif isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.update({'class': 'form-check-input'})
+            elif isinstance(field.widget, forms.RadioSelect):
+                # For radio select, you might need to style the container/individual items
+                pass # Already handled by Bootstrap styles if applied globally or by custom CSS
+
+        # Dynamically make fields required/optional based on enablement checkboxes
+        # These will mostly be client-side handled by JS, but also good for server-side validation
+        if not self.initial.get('enable_loyalty_point_earning', False):
+            self.fields['loyalty_points_per_ugx_spent'].required = False
+            self.fields['loyalty_points_per_ugx_spent'].widget.attrs['disabled'] = 'disabled'
+
+        if not self.initial.get('enable_loyalty_point_redemption', False):
+            self.fields['loyalty_points_required_for_redemption'].required = False
+            self.fields['loyalty_points_required_for_redemption'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_redemption_discount_type'].required = False
+            self.fields['loyalty_redemption_discount_type'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_redemption_discount_value'].required = False
+            self.fields['loyalty_redemption_discount_value'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_redemption_max_discount_amount'].required = False
+            self.fields['loyalty_redemption_max_discount_amount'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_redemption_is_branch_specific'].required = False
+            self.fields['loyalty_redemption_is_branch_specific'].widget.attrs['disabled'] = 'disabled'
+        
+        if not self.initial.get('enable_coupon_codes', False):
+            self.fields['coupon_loyalty_requirement_type'].required = False
+            self.fields['coupon_loyalty_requirement_type'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_min_spend_for_coupon'].required = False
+            self.fields['loyalty_min_spend_for_coupon'].widget.attrs['disabled'] = 'disabled'
+            self.fields['loyalty_min_visits_for_coupon'].required = False
+            self.fields['loyalty_min_visits_for_coupon'].widget.attrs['disabled'] = 'disabled'
+            self.fields['coupon_is_branch_specific'].required = False
+            self.fields['coupon_is_branch_specific'].widget.attrs['disabled'] = 'disabled'
+
+    def clean(self):
+        cleaned_data = super().clean()
+
+        # Conditional validation based on checkboxes
+        if cleaned_data.get('enable_loyalty_point_earning'):
+            if not cleaned_data.get('loyalty_points_per_ugx_spent'):
+                self.add_error('loyalty_points_per_ugx_spent', 'This field is required when loyalty point earning is enabled.')
+
+        if cleaned_data.get('enable_loyalty_point_redemption'):
+            if not cleaned_data.get('loyalty_points_required_for_redemption'):
+                self.add_error('loyalty_points_required_for_redemption', 'This field is required when loyalty point redemption is enabled.')
+            if not cleaned_data.get('loyalty_redemption_discount_value'):
+                self.add_error('loyalty_redemption_discount_value', 'This field is required when loyalty point redemption is enabled.')
+            
+            # Additional validation for percentage type
+            if cleaned_data.get('loyalty_redemption_discount_type') == 'percentage':
+                value = cleaned_data.get('loyalty_redemption_discount_value')
+                if value is not None and (value < 0 or value > 100):
+                    self.add_error('loyalty_redemption_discount_value', 'Percentage value must be between 0 and 100.')
+
+        if cleaned_data.get('enable_coupon_codes'):
+            req_type = cleaned_data.get('coupon_loyalty_requirement_type')
+            if req_type in ['min_spend', 'both', 'either'] and not cleaned_data.get('loyalty_min_spend_for_coupon'):
+                self.add_error('loyalty_min_spend_for_coupon', 'Minimum spend is required for this coupon loyalty requirement type.')
+            if req_type in ['min_visits', 'both', 'either'] and not cleaned_data.get('loyalty_min_visits_for_coupon'):
+                self.add_error('loyalty_min_visits_for_coupon', 'Minimum visits is required for this coupon loyalty requirement type.')
+
+        return cleaned_data

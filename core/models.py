@@ -59,8 +59,8 @@ class Item(models.Model):
     business = models.ForeignKey('Business', on_delete=models.CASCADE, related_name='items')
     type = models.CharField(max_length=20, choices=ITEM_TYPES)
     name = models.CharField(max_length=100)
-    selling_price = models.DecimalField(max_digits=10, decimal_places=2, validators=[MinValueValidator(0.0)])
-    cost_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, validators=[MinValueValidator(0.0)])
+    selling_price = models.DecimalField(max_digits=10, decimal_places=0, validators=[MinValueValidator(0.0)])
+    cost_price = models.DecimalField(max_digits=10, decimal_places=0, null=True, blank=True, validators=[MinValueValidator(0.0)])
 
     class Meta:
         unique_together = ('business', 'name', 'type')  # Unique name per type per business

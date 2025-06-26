@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse, reverse_lazy
 from .models import Branch, BranchEmployee, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
+from .forms import AddEmployeeForm, BusinessRegisterForm, BusinessSettingsForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -27,6 +27,29 @@ from django.views.decorators.csrf import csrf_protect
 from core import forms
 import io
 from django.template.loader import get_template 
+
+@login_required
+def customer_discount_settings_view(request):
+    # Ensure the user has a Business and retrieve its settings, or create if it doesn't exist
+    business_settings, created = BusinessSettings.objects.get_or_create(business=request.user.business)
+
+    if request.method == 'POST':
+        form = BusinessSettingsForm(request.POST, instance=business_settings)
+        if form.is_valid():
+            form.save()
+            messages.success(request, 'Customer discount settings updated successfully!')
+            return redirect('customer_discount_settings') # Redirect back to the same page
+        else:
+            messages.error(request, 'Error updating settings. Please check the form.')
+    else:
+        form = BusinessSettingsForm(instance=business_settings)
+
+    context = {
+        'form': form,
+        'business_settings': business_settings, # Pass settings for initial state of form fields if needed
+    }
+    return render(request, 'home/customer_discount_settings.html', context)
+
 
 @login_required
 def get_customer_details(request, customer_id):
@@ -109,20 +132,16 @@ def update_transaction_status(request, pk):
         print(f"Error updating transaction status for PK {pk}: {e}")
         return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
 
-
-@login_required # Protect this view
-@require_POST
-# @csrf_protect # Use this in production.
+@csrf_protect # Apply csrf_protect decorator
 def toggle_payment_status(request, pk):
     """
-    API endpoint to toggle the payment status (is_paid) of a specific transaction.
-    Expected to receive JSON: {'is_paid': true/false}
+    Toggles the payment status of a transaction.
+    Prevents changing 'paid' to 'pending'.
     """
     try:
         transaction = get_object_or_404(Transaction, pk=pk, branch__business=request.user.business)
 
-        # Ensure only staff or specific roles can perform this action
-        if not request.user.is_staff: # Or check custom permission
+        if not request.user.is_staff: # Assuming only staff can change payment status
              return JsonResponse({'success': False, 'error': 'Permission denied.'}, status=403)
 
         data = json.loads(request.body)
@@ -131,21 +150,28 @@ def toggle_payment_status(request, pk):
         if not isinstance(is_paid_new, bool):
             return JsonResponse({'success': False, 'error': 'Invalid value for is_paid. Must be true or false.'}, status=400)
 
+        # --- NEW LOGIC ADDED HERE ---
+        # If the transaction is currently paid (True) and the new status is pending (False)
+        if transaction.is_paid and is_paid_new is False:
+            return JsonResponse({'success': False, 'error': 'Cannot change a paid transaction back to pending.'}, status=400)
+        # --- END NEW LOGIC ---
+
         transaction.is_paid = is_paid_new
         if is_paid_new:
-            if not transaction.paid_at: # Only update paid_at if it's currently null
+            if not transaction.paid_at: # Only set paid_at if it's becoming paid for the first time
                 transaction.paid_at = timezone.now()
         else:
-            transaction.paid_at = None # Clear paid_at if marked as pending
+            transaction.paid_at = None # This line would now only be reached if transaction.is_paid was already False
 
         transaction.save()
         return JsonResponse({'success': True, 'message': 'Payment status updated.'})
     except json.JSONDecodeError:
         return JsonResponse({'success': False, 'error': 'Invalid JSON in request body.'}, status=400)
     except Exception as e:
-        # Log the error for debugging
-        print(f"Error toggling payment status for PK {pk}: {e}")
-        return JsonResponse({'success': False, 'error': f'An error occurred: {str(e)}'}, status=500)
+        # It's good practice to log the full traceback for unexpected errors
+        import traceback
+        logger.error(f"Error toggling payment status for PK {pk}: {e}\n{traceback.format_exc()}") 
+        return JsonResponse({'success': False, 'error': f'An unexpected error occurred: {str(e)}'}, status=500)
 
 from django.views.decorators.clickjacking import xframe_options_sameorigin
 
@@ -596,7 +622,11 @@ def addbranch_view(request):
         location = request.POST.get("location")
 
         business = request.user.business
-
+        #  check if branch exists
+        branch_exists = Branch.objects.filter(name=branch_name, business=business).exists()
+        if branch_exists:
+            messages.error(request, "Branch with this name already exists.")
+            return render(request, "home/add_branch.html", {"branch_name": branch_name, "location": location})  
         branch = Branch.objects.create(name=branch_name, location=location, business=business)
 
 
@@ -634,17 +664,22 @@ def delete_branch_view(request, branch_id):
 def services_products_view(request):
     business = getattr(request.user, 'business', None)
     if not business:
-        return render(request, 'home/item.html', {'services': [], 'products': []})
-    
+        return render(request, 'home/item.html', {
+            'services': [],
+            'products': [],
+            'selected_type': 'service',  # default
+        })
+
+    selected_type = request.GET.get('type', 'service')
     items = Item.objects.filter(business=business).order_by('name')
     services = items.filter(type='service')
     products = items.filter(type='product')
-    
+
     return render(request, 'home/item.html', {
         'services': services,
-        'products': products
+        'products': products,
+        'selected_type': selected_type,
     })
-
 
 
 logger = logging.getLogger(__name__)
@@ -659,23 +694,23 @@ def add_service_product_view(request):
     form_errors = []
     if request.method == 'POST':
         logger.debug("POST data: %s", request.POST)
-        type = request.POST.get('type')
+        item_type = request.POST.get('item_type')
         name = request.POST.get('name', '').strip()
         selling_price = request.POST.get('selling_price')
         cost_price = request.POST.get('cost_price')
 
         # Validation
-        if not type:
+        if not item_type:
             form_errors.append("Item Type is required.")
         if not name:
             form_errors.append("Name is required.")
         if not selling_price:
             form_errors.append("Selling Price is required.")
-        if type == 'product' and not cost_price:
+        if item_type == 'product' and not cost_price:
             form_errors.append("Cost Price is required for products.")
 
         if not form_errors:
-            if type not in ['service', 'product']:
+            if item_type not in ['service', 'product']:
                 form_errors.append("Invalid item type selected.")
             else:
                 try:
@@ -683,6 +718,8 @@ def add_service_product_view(request):
                     cost_price = Decimal(cost_price) if cost_price else None
                     if selling_price < 0 or (cost_price is not None and cost_price < 0):
                         form_errors.append("Prices cannot be negative.")
+                    if item_type == 'product' and cost_price is not None and selling_price <= cost_price:
+                        form_errors.append("Selling price must be greater than cost price for products.")
                 except InvalidOperation:
                     form_errors.append("Invalid price format. Please enter valid numbers.")
                     selling_price = None
@@ -690,18 +727,18 @@ def add_service_product_view(request):
 
                 # Check for duplicate item
                 if not form_errors and Item.objects.filter(business=business, name=name, type=item_type).exists():
-                    form_errors.append(f"A {type} named '{name}' already exists for this business.")
+                    form_errors.append(f"A {item_type} named '{name}' already exists for this business.")
 
                 if not form_errors:
                     try:
                         Item.objects.create(
                             business=business,
-                            type=type,
+                            type=item_type,
                             name=name,
                             selling_price=selling_price,
-                            cost_price=cost_price if type == 'product' else None
+                            cost_price=cost_price if item_type == 'product' else None
                         )
-                        logger.info("Created item: %s (%s) for business %s", name, type, business)
+                        logger.info("Created item: %s (%s) for business %s", name, item_type, business)
                         return redirect('services-products')
                     except Exception as e:
                         form_errors.append(f"Error creating item: {str(e)}")
@@ -733,6 +770,8 @@ def edit_service_product_view(request, item_id):
             form_errors.append("Prices cannot be negative.")
         elif item_type not in ['service', 'product']:
             form_errors.append("Invalid item type selected.")
+        elif item_type == 'product' and cost_price is not None and selling_price <= cost_price:
+            form_errors.append("Selling price must be greater than cost price for products.")
         else:
             try:
                 item.name = name
@@ -756,15 +795,23 @@ def edit_service_product_view(request, item_id):
 def delete_service_product_view(request, item_id):
     business = getattr(request.user, 'business', None)
     if not business:
-        return redirect('services-products')  # Redirect if no business is associated
+        return redirect('services-products')
 
     item = get_object_or_404(Item, id=item_id, business=business)
 
+    # Check if this item is used in any transaction
+    is_used = TransactionItem.objects.filter(item=item).exists()
+    if is_used:
+        messages.error(request, "This item cannot be deleted because it has been purchased or used in a transaction.")
+        return redirect('services-products')
+
     if request.method == 'POST':
         item.delete()
+        messages.success(request, "Item deleted successfully.")
         return redirect('services-products')
 
     return redirect('services-products')
+
 
 def get_user_business(user):
     if hasattr(user, 'business'):
@@ -846,7 +893,34 @@ def revenue_list_view(request):
 def employees_view(request):
     business = get_user_business(request.user)
     branches = Branch.objects.filter(business=business).prefetch_related('employees__user', 'employees__role') if business else []
-    return render(request, 'home/employees.html', {'branches': branches})
+
+    show_all = request.GET.get('all') == '1'
+    selected_branch_id = request.GET.get('branch')
+    selected_branch = None
+
+    all_employees = []
+    branch_employees = []
+
+    if show_all:
+        # Show all employees across all branches
+        all_employees = BranchEmployee.objects.filter(branch__business=business).select_related('user', 'branch', 'role')
+    elif selected_branch_id:
+        selected_branch = Branch.objects.filter(id=selected_branch_id, business=business).first()
+        if selected_branch:
+            branch_employees = selected_branch.employees.select_related('user', 'role').all()
+    else:
+        # Default: show employees for the first branch if exists
+        if branches:
+            selected_branch = branches.first()
+            branch_employees = selected_branch.employees.select_related('user', 'role').all()
+
+    return render(request, 'home/employees.html', {
+        'branches': branches,
+        'show_all': show_all,
+        'all_employees': all_employees,
+        'selected_branch': selected_branch,
+        'branch_employees': branch_employees,
+    })
 
 
 

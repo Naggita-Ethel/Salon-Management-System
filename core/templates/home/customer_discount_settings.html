@@ -1,0 +1,406 @@
+{% extends "layouts/base.html" %}
+{% load widget_tweaks %} {# Make sure widget_tweaks is loaded #}
+
+{% block title %}Customer Discount Settings{% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 10 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Dashboard</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Customer Discount Settings</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Customer Discount Settings</h1>
+            <p class="mb-0">Configure loyalty points and coupon code policies for your business.</p>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow components-section">
+    <div class="card-body">
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+
+        {% if form.non_field_errors %}
+            <div class="alert alert-danger" role="alert">
+                {% for error in form.non_field_errors %}
+                    {{ error }}
+                {% endfor %}
+            </div>
+        {% endif %}
+
+        <form method="post" novalidate id="business-settings-form">
+            {% csrf_token %}
+
+            <h5 class="mb-4">Loyalty Points Earning</h5>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    <div class="form-check form-switch">
+                        {% render_field form.enable_loyalty_point_earning class="form-check-input" %}
+                        <label class="form-check-label" for="{{ form.enable_loyalty_point_earning.id_for_label }}">
+                            {{ form.enable_loyalty_point_earning.label }}
+                        </label>
+                        {% if form.enable_loyalty_point_earning.help_text %}
+                            <small class="form-text text-muted d-block">{{ form.enable_loyalty_point_earning.help_text }}</small>
+                        {% endif %}
+                        {% if form.enable_loyalty_point_earning.errors %}
+                            <div class="text-danger">{{ form.enable_loyalty_point_earning.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="col-md-6 mb-3" id="loyalty-earning-details">
+                    <label for="{{ form.loyalty_points_per_ugx_spent.id_for_label }}">
+                        {{ form.loyalty_points_per_ugx_spent.label }}
+                    </label>
+                    {% render_field form.loyalty_points_per_ugx_spent class="form-control" %}
+                    {% if form.loyalty_points_per_ugx_spent.help_text %}
+                        <small class="form-text text-muted">{{ form.loyalty_points_per_ugx_spent.help_text }}</small>
+                    {% endif %}
+                    {% if form.loyalty_points_per_ugx_spent.errors %}
+                        <div class="text-danger">{{ form.loyalty_points_per_ugx_spent.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+
+            <h5 class="mt-4 mb-4">Loyalty Points Redemption</h5>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    <div class="form-check form-switch">
+                        {% render_field form.enable_loyalty_point_redemption class="form-check-input" %}
+                        <label class="form-check-label" for="{{ form.enable_loyalty_point_redemption.id_for_label }}">
+                            {{ form.enable_loyalty_point_redemption.label }}
+                        </label>
+                        {% if form.enable_loyalty_point_redemption.help_text %}
+                            <small class="form-text text-muted d-block">{{ form.enable_loyalty_point_redemption.help_text }}</small>
+                        {% endif %}
+                        {% if form.enable_loyalty_point_redemption.errors %}
+                            <div class="text-danger">{{ form.enable_loyalty_point_redemption.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div id="loyalty-redemption-details">
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.loyalty_points_required_for_redemption.id_for_label }}">
+                                {{ form.loyalty_points_required_for_redemption.label }}
+                            </label>
+                            {% render_field form.loyalty_points_required_for_redemption class="form-control" %}
+                            {% if form.loyalty_points_required_for_redemption.help_text %}
+                                <small class="form-text text-muted">{{ form.loyalty_points_required_for_redemption.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_points_required_for_redemption.errors %}
+                                <div class="text-danger">{{ form.loyalty_points_required_for_redemption.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ form.loyalty_redemption_discount_type.label }}</label>
+                            <div class="d-flex flex-row gap-3">
+                                {% for radio in form.loyalty_redemption_discount_type %}
+                                <div class="form-check">
+                                    {{ radio.tag }}
+                                    <label class="form-check-label" for="{{ radio.id_for_label }}">
+                                        {{ radio.choice_label }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% if form.loyalty_redemption_discount_type.help_text %}
+                                <small class="form-text text-muted d-block">{{ form.loyalty_redemption_discount_type.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_redemption_discount_type.errors %}
+                                <div class="text-danger">{{ form.loyalty_redemption_discount_type.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.loyalty_redemption_discount_value.id_for_label }}">
+                                {{ form.loyalty_redemption_discount_value.label }}
+                            </label>
+                            {% render_field form.loyalty_redemption_discount_value class="form-control" %}
+                            {% if form.loyalty_redemption_discount_value.help_text %}
+                                <small class="form-text text-muted">{{ form.loyalty_redemption_discount_value.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_redemption_discount_value.errors %}
+                                <div class="text-danger">{{ form.loyalty_redemption_discount_value.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.loyalty_redemption_max_discount_amount.id_for_label }}">
+                                {{ form.loyalty_redemption_max_discount_amount.label }}
+                            </label>
+                            {% render_field form.loyalty_redemption_max_discount_amount class="form-control" %}
+                            {% if form.loyalty_redemption_max_discount_amount.help_text %}
+                                <small class="form-text text-muted">{{ form.loyalty_redemption_max_discount_amount.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_redemption_max_discount_amount.errors %}
+                                <div class="text-danger">{{ form.loyalty_redemption_max_discount_amount.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check form-switch">
+                                {% render_field form.loyalty_redemption_is_branch_specific class="form-check-input" %}
+                                <label class="form-check-label" for="{{ form.loyalty_redemption_is_branch_specific.id_for_label }}">
+                                    {{ form.loyalty_redemption_is_branch_specific.label }}
+                                </label>
+                                {% if form.loyalty_redemption_is_branch_specific.help_text %}
+                                    <small class="form-text text-muted d-block">{{ form.loyalty_redemption_is_branch_specific.help_text }}</small>
+                                {% endif %}
+                                {% if form.loyalty_redemption_is_branch_specific.errors %}
+                                    <div class="text-danger">{{ form.loyalty_redemption_is_branch_specific.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h5 class="mt-4 mb-4">Coupon Codes</h5>
+            <div class="row">
+                <div class="col-md-12 mb-3">
+                    <div class="form-check form-switch">
+                        {% render_field form.enable_coupon_codes class="form-check-input" %}
+                        <label class="form-check-label" for="{{ form.enable_coupon_codes.id_for_label }}">
+                            {{ form.enable_coupon_codes.label }}
+                        </label>
+                        {% if form.enable_coupon_codes.help_text %}
+                            <small class="form-text text-muted d-block">{{ form.enable_coupon_codes.help_text }}</small>
+                        {% endif %}
+                        {% if form.enable_coupon_codes.errors %}
+                            <div class="text-danger">{{ form.enable_coupon_codes.errors }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                <div id="coupon-details">
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <label class="form-label">{{ form.coupon_loyalty_requirement_type.label }}</label>
+                            <div class="d-flex flex-column gap-2"> {# Use flex-column for stacked radios #}
+                                {% for radio in form.coupon_loyalty_requirement_type %}
+                                <div class="form-check">
+                                    {{ radio.tag }}
+                                    <label class="form-check-label" for="{{ radio.id_for_label }}">
+                                        {{ radio.choice_label }}
+                                    </label>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% if form.coupon_loyalty_requirement_type.help_text %}
+                                <small class="form-text text-muted d-block">{{ form.coupon_loyalty_requirement_type.help_text }}</small>
+                            {% endif %}
+                            {% if form.coupon_loyalty_requirement_type.errors %}
+                                <div class="text-danger">{{ form.coupon_loyalty_requirement_type.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row" id="coupon-loyalty-requirements">
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.loyalty_min_spend_for_coupon.id_for_label }}">
+                                {{ form.loyalty_min_spend_for_coupon.label }}
+                            </label>
+                            {% render_field form.loyalty_min_spend_for_coupon class="form-control" %}
+                            {% if form.loyalty_min_spend_for_coupon.help_text %}
+                                <small class="form-text text-muted">{{ form.loyalty_min_spend_for_coupon.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_min_spend_for_coupon.errors %}
+                                <div class="text-danger">{{ form.loyalty_min_spend_for_coupon.errors }}</div>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label for="{{ form.loyalty_min_visits_for_coupon.id_for_label }}">
+                                {{ form.loyalty_min_visits_for_coupon.label }}
+                            </label>
+                            {% render_field form.loyalty_min_visits_for_coupon class="form-control" %}
+                            {% if form.loyalty_min_visits_for_coupon.help_text %}
+                                <small class="form-text text-muted">{{ form.loyalty_min_visits_for_coupon.help_text }}</small>
+                            {% endif %}
+                            {% if form.loyalty_min_visits_for_coupon.errors %}
+                                <div class="text-danger">{{ form.loyalty_min_visits_for_coupon.errors }}</div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    <div class="row">
+                        <div class="col-md-12 mb-3">
+                            <div class="form-check form-switch">
+                                {% render_field form.coupon_is_branch_specific class="form-check-input" %}
+                                <label class="form-check-label" for="{{ form.coupon_is_branch_specific.id_for_label }}">
+                                    {{ form.coupon_is_branch_specific.label }}
+                                </label>
+                                {% if form.coupon_is_branch_specific.help_text %}
+                                    <small class="form-text text-muted d-block">{{ form.coupon_is_branch_specific.help_text }}</small>
+                                {% endif %}
+                                {% if form.coupon_is_branch_specific.errors %}
+                                    <div class="text-danger">{{ form.coupon_is_branch_specific.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">
+                    <i class="bi bi-save me-2"></i>Save Settings
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        const form = document.getElementById('business-settings-form');
+
+        // Checkbox elements
+        const enableLoyaltyEarning = document.getElementById('id_enable_loyalty_point_earning');
+        const enableLoyaltyRedemption = document.getElementById('id_enable_loyalty_point_redemption');
+        const enableCouponCodes = document.getElementById('id_enable_coupon_codes');
+
+        // Divs/sections that depend on checkboxes
+        const loyaltyEarningDetails = document.getElementById('loyalty-earning-details');
+        const loyaltyRedemptionDetails = document.getElementById('loyalty-redemption-details');
+        const couponDetails = document.getElementById('coupon-details');
+        const couponLoyaltyRequirements = document.getElementById('coupon-loyalty-requirements');
+
+        // Loyalty Redemption Type Radios
+        const loyaltyRedemptionTypeRadios = document.querySelectorAll('input[name="loyalty_redemption_discount_type"]');
+        const loyaltyRedemptionValue = document.getElementById('id_loyalty_redemption_discount_value');
+        const loyaltyRedemptionMaxAmount = document.getElementById('id_loyalty_redemption_max_discount_amount');
+
+        // Coupon Loyalty Requirement Type Radios
+        const couponLoyaltyRequirementTypeRadios = document.querySelectorAll('input[name="coupon_loyalty_requirement_type"]');
+        const loyaltyMinSpend = document.getElementById('id_loyalty_min_spend_for_coupon');
+        const loyaltyMinVisits = document.getElementById('id_loyalty_min_visits_for_coupon');
+
+
+        function toggleFieldset(checkbox, fieldset) {
+            if (checkbox.checked) {
+                fieldset.style.display = 'block';
+                // Enable all child form controls that were disabled
+                fieldset.querySelectorAll('input, select, textarea').forEach(control => {
+                    if (control.dataset.originalDisabled !== 'true') { // Only re-enable if not originally disabled by Django
+                         control.removeAttribute('disabled');
+                    }
+                });
+            } else {
+                fieldset.style.display = 'none';
+                // Disable all child form controls
+                fieldset.querySelectorAll('input, select, textarea').forEach(control => {
+                    control.setAttribute('disabled', 'disabled');
+                });
+            }
+        }
+
+        function updateLoyaltyRedemptionValueHelpText() {
+            let selectedType = 'percentage'; // Default
+            loyaltyRedemptionTypeRadios.forEach(radio => {
+                if (radio.checked) {
+                    selectedType = radio.value;
+                }
+            });
+
+            const helpTextElement = loyaltyRedemptionValue.nextElementSibling; // Assuming help text is next sibling
+            if (helpTextElement && helpTextElement.tagName === 'SMALL') {
+                if (selectedType === 'percentage') {
+                    helpTextElement.textContent = 'Value of discount (e.g., 5 for 5%). Should be between 0-100.';
+                } else if (selectedType === 'fixed') {
+                    helpTextElement.textContent = 'Value of discount (e.g., 5000 for UGX 5000 fixed amount).';
+                }
+            }
+            // Toggle visibility/required status of max_discount_amount
+            if (selectedType === 'percentage') {
+                loyaltyRedemptionMaxAmount.closest('.col-md-6').style.display = 'block';
+                // You might want to make it required or not based on your specific rule.
+                // If it's optional, no need to touch 'required' attribute.
+            } else {
+                loyaltyRedemptionMaxAmount.closest('.col-md-6').style.display = 'none';
+                loyaltyRedemptionMaxAmount.value = ''; // Clear value when hidden
+            }
+        }
+
+        function updateCouponLoyaltyRequirementsVisibility() {
+            let selectedType = 'none';
+            couponLoyaltyRequirementTypeRadios.forEach(radio => {
+                if (radio.checked) {
+                    selectedType = radio.value;
+                }
+            });
+
+            if (selectedType === 'none') {
+                couponLoyaltyRequirements.style.display = 'none';
+                loyaltyMinSpend.removeAttribute('required');
+                loyaltyMinVisits.removeAttribute('required');
+                loyaltyMinSpend.value = ''; // Clear values
+                loyaltyMinVisits.value = '';
+            } else if (selectedType === 'min_spend') {
+                couponLoyaltyRequirements.style.display = 'block';
+                loyaltyMinSpend.setAttribute('required', 'required');
+                loyaltyMinVisits.removeAttribute('required');
+                loyaltyMinVisits.value = '';
+            } else if (selectedType === 'min_visits') {
+                couponLoyaltyRequirements.style.display = 'block';
+                loyaltyMinSpend.removeAttribute('required');
+                loyaltyMinSpend.value = '';
+                loyaltyMinVisits.setAttribute('required', 'required');
+            } else if (selectedType === 'both' || selectedType === 'either') {
+                couponLoyaltyRequirements.style.display = 'block';
+                loyaltyMinSpend.setAttribute('required', 'required');
+                loyaltyMinVisits.setAttribute('required', 'required');
+            }
+        }
+
+        // Store original disabled state set by Django for fields based on initial value
+        // This prevents JS from re-enabling fields that Django explicitly disabled if the feature is off
+        form.querySelectorAll('[disabled]').forEach(control => {
+            control.dataset.originalDisabled = 'true';
+        });
+
+        // Initial setup on page load
+        toggleFieldset(enableLoyaltyEarning, loyaltyEarningDetails);
+        toggleFieldset(enableLoyaltyRedemption, loyaltyRedemptionDetails);
+        toggleFieldset(enableCouponCodes, couponDetails);
+        updateLoyaltyRedemptionValueHelpText(); // Set correct help text and visibility on load
+        updateCouponLoyaltyRequirementsVisibility(); // Set correct visibility on load
+
+
+        // Event listeners for checkboxes
+        enableLoyaltyEarning.addEventListener('change', () => toggleFieldset(enableLoyaltyEarning, loyaltyEarningDetails));
+        enableLoyaltyRedemption.addEventListener('change', () => {
+            toggleFieldset(enableLoyaltyRedemption, loyaltyRedemptionDetails);
+            updateLoyaltyRedemptionValueHelpText(); // Update when redemption is toggled
+        });
+        enableCouponCodes.addEventListener('change', () => {
+            toggleFieldset(enableCouponCodes, couponDetails);
+            updateCouponLoyaltyRequirementsVisibility(); // Update when coupons are toggled
+        });
+
+        // Event listeners for radio buttons to dynamically change help text/visibility
+        loyaltyRedemptionTypeRadios.forEach(radio => {
+            radio.addEventListener('change', updateLoyaltyRedemptionValueHelpText);
+        });
+        couponLoyaltyRequirementTypeRadios.forEach(radio => {
+            radio.addEventListener('change', updateCouponLoyaltyRequirementsVisibility);
+        });
+    });
+</script>
+{% endblock javascripts %}
+
