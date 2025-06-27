@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse, reverse_lazy
 from .models import Branch, BranchEmployee, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, BusinessSettingsForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
+from .forms import AddEmployeeForm, BusinessRegisterForm, BusinessSettingsForm, CustomerForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -27,6 +27,50 @@ from django.views.decorators.csrf import csrf_protect
 from core import forms
 import io
 from django.template.loader import get_template 
+
+def customer_list_view(request):
+    customers = Party.objects.filter(type='customer')
+    return render(request, 'home/customer_list.html', {'customers': customers})
+
+def customer_add_view(request):
+    if request.method == 'POST':
+        form = CustomerForm(request.POST)
+        if form.is_valid():
+            try:
+                customer = form.save(commit=False)
+                customer.business = request.user.business  # Make sure this is not None
+                customer.save()
+                messages.success(request, "Customer created successfully!")
+                return redirect('customer_list')
+            except Exception as e:
+                print("Error saving customer:", e)
+        else:
+            print("Form is not valid:", form.errors)
+    else:
+        form = CustomerForm()
+    
+    # IMPORTANT: Pass customer=None to support template logic
+    return render(request, 'home/customer_form.html', {'form': form, 'customer': None})
+
+
+
+def customer_edit_view(request, pk):
+    customer = get_object_or_404(Party, pk=pk)
+    if request.method == 'POST':
+        form = CustomerForm(request.POST, instance=customer)
+        if form.is_valid():
+            form.save()
+            return redirect('customer_list')
+    else:
+        form = CustomerForm(instance=customer)
+    return render(request, 'home/customer_form.html', {'form': form})
+
+def customer_delete_view(request, pk):
+    customer = get_object_or_404(Party, pk=pk)
+    if request.method == 'POST':
+        customer.delete()
+        return redirect('customer_list')
+    return render(request, 'home/customer_confirm_delete.html', {'customer': customer})
 
 @login_required
 def customer_discount_settings_view(request):

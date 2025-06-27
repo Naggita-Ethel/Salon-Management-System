@@ -1,0 +1,101 @@
+{% extends "layouts/base.html" %}
+{% load widget_tweaks %}
+
+
+{% block title %}{% if customer %}Edit Customer{% else %}Add Customer{% endif %}{% endblock %}
+
+{% block content %}
+<div class="py-4">
+    {% if messages %}
+        {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert" id="msg-alert">
+            {{ message }}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+        {% endfor %}
+    {% endif %}
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round"
+                        stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Tasks</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'customer_list' %}">Customers</a></li>
+            <li class="breadcrumb-item active" aria-current="page">{% if customer %}Edit Customer{% else %}Add Customer{% endif %}</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">{% if customer %}Edit Customer{% else %}Add Customer{% endif %}</h1>
+            <p class="mb-0">{% if customer %}Update customer details.{% else %}Register a new customer for your business.{% endif %}</p>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow components-section">
+    <div class="card-body">
+        <form method="POST" novalidate>
+            {% csrf_token %}
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.full_name.id_for_label }}">Full Name</label>
+                    {{ form.full_name|add_class:"form-control" }}
+                    {% if form.full_name.errors %}
+                        <div class="text-danger">{{ form.full_name.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.gender.id_for_label }}">Gender</label>
+                    {{ form.gender|add_class:"form-control" }}
+                    {% if form.gender.errors %}
+                        <div class="text-danger">{{ form.gender.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.phone.id_for_label }}">Phone</label>
+                    {{ form.phone|add_class:"form-control" }}
+                    {% if form.phone.errors %}
+                        <div class="text-danger">{{ form.phone.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.email.id_for_label }}">Email</label>
+                    {{ form.email|add_class:"form-control" }}
+                    {% if form.email.errors %}
+                        <div class="text-danger">{{ form.email.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12 mb-3">
+                    <label for="{{ form.address.id_for_label }}">Address</label>
+                    {{ form.address|add_class:"form-control" }}
+                    {% if form.address.errors %}
+                        <div class="text-danger">{{ form.address.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">
+                    {% if customer %}Update{% else %}Create{% endif %}
+                </button>
+                <a href="{% url 'customer_list' %}" class="btn btn-secondary mt-3">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock content %}
+
+{% block javascripts %}
+    <script>
+        setTimeout(function() {
+            var alert = document.getElementById('msg-alert');
+            if(alert){
+            alert.classList.remove('show');
+            alert.classList.add('hide');
+            }
+        }, 4000); // 4 seconds
+    </script>
+{% endblock javascripts %}

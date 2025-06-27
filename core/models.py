@@ -15,11 +15,10 @@ class User(AbstractUser):
     phone = models.CharField(max_length=15, blank=True)
     address = models.TextField(blank=True)  # Added for employee address
     GENDER_CHOICES = (
-        ('M', 'Male'),
-        ('F', 'Female'),
-        
+        ('Male', 'Male'),
+        ('Female', 'Female'),
     )
-    gender = models.CharField(max_length=1, choices=GENDER_CHOICES)  # Added for gender
+    gender = models.CharField(max_length=6, choices=GENDER_CHOICES)  # Added for gender
 
     def __str__(self):
         return self.full_name or self.username

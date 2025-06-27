@@ -416,3 +416,19 @@ class BusinessSettingsForm(forms.ModelForm):
                 self.add_error('loyalty_min_visits_for_coupon', 'Minimum visits is required for this coupon loyalty requirement type.')
 
         return cleaned_data
+    
+class CustomerForm(forms.ModelForm):
+    class Meta:
+        model = Party
+        fields = ['gender', 'full_name', 'phone', 'email', 'address']  # REMOVE 'type' and 'loyalty_points'
+        widgets = {
+            'address': forms.TextInput(attrs={'class': 'form-control', 'maxlength': 150}),
+        }
+
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.type = 'customer'  # Always set type to 'customer'
+        instance.loyalty_points = instance.loyalty_points or 0  # Default to 0 if not set
+        if commit:
+            instance.save()
+        return instance

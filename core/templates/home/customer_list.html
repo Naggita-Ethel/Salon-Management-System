@@ -1,0 +1,117 @@
+{% extends "layouts/base.html" %}
+
+{% load humanize%}
+
+{% block title %} Customer Management {% endblock %}
+
+{% block content %}
+
+<div class="py-4">
+  {% if messages %}
+    {% for message in messages %}
+      <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert" id="msg-alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+      </div>
+    {% endfor %}
+  {% endif %}
+  <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+    <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+      <li class="breadcrumb-item">
+        <a href="#">
+          <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+            xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round"
+            stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+        </a>
+      </li>
+      <li class="breadcrumb-item"><a href="{% url 'dashboard' %}">Tasks</a></li>
+      <li class="breadcrumb-item active" aria-current="page">Customer Management</li>
+    </ol>
+  </nav>
+
+  <div class="d-flex justify-content-between w-100 flex-wrap">
+    <div class="mb-3 mb-lg-0">
+      <h1 class="h4">Your Customers</h1>
+      <p class="mb-0">Manage all your business customers</p>
+    </div>
+    <div>
+      <a href="{% url 'customer_add' %}"
+         class="btn d-inline-flex align-items-center"
+         style="background-color: #F8BD7A; color: #262B40; border: none;">
+        <svg class="icon icon-xs me-2" fill="none" stroke="currentColor"
+             viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+        </svg>
+        Add Customer
+      </a>
+    </div>
+  </div>
+</div>
+
+<div class="card border-0 shadow mb-4">
+  <div class="card-body">
+    <div class="table-responsive">
+      <table class="table table-hover table-centered table-nowrap mb-0 rounded">
+        <thead style="background-color: #F8BD7A; color: #262B40;">
+          <tr>
+            <th class="border-0 rounded-start">#</th>
+            <th class="border-0">Full Name</th>
+            <th class="border-0">Email</th>
+            <th class="border-0">Phone</th>
+            <th class="border-0">Gender</th>
+            <th class="border-0">Address</th>
+            <th class="border-0">Loyalty Points</th>
+            <th class="border-0">Total Spend</th>
+            <th class="border-0">Total Visits</th>
+            <th class="border-0 rounded-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for customer in customers %}
+          <tr>
+            <td>{{ forloop.counter }}</td>
+            <td><strong>{{ customer.full_name }}</strong></td>
+            <td>{{ customer.email|default:"N/A" }}</td>
+            <td>{{ customer.phone|default:"N/A" }}</td>
+            <td>{{ customer.gender|default:"N/A" }}</td>
+            <td>{{ customer.address|default:"N/A" }}</td>
+            <td>{{ customer.loyalty_points }}</td>
+            <td>UGX {{ customer.total_spend|floatformat:0|intcomma }}</td>
+            <td>{{ customer.total_visits }}</td>
+            <td>
+              <a href="{% url 'customer_edit' customer.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
+                <i class="bi bi-pencil"></i>
+              </a>
+              <form method="POST" action="{% url 'customer_delete' customer.id %}" style="display: inline;" onsubmit="return confirm('Are you sure you want to delete this customer?');">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-danger" title="Delete">
+                    <i class="bi bi-trash"></i>
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="10" class="text-center">No customers found.</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock content %}
+
+{% block javascripts %}
+    <script>
+        setTimeout(function() {
+            var alert = document.getElementById('msg-alert');
+            if(alert){
+            alert.classList.remove('show');
+            alert.classList.add('hide');
+            }
+        }, 4000); // 4 seconds
+    </script>
+{% endblock javascripts %}

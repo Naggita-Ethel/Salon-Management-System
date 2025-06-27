@@ -146,10 +146,9 @@
 
                             {# Actions Column: Single "Generate Receipt" button to open modal #}
                             <td>
-                                <button type="button" class="btn btn-sm btn-outline-secondary generate-receipt-button" 
-                                        data-bs-toggle="modal" data-bs-target="#receiptModal" data-tx-id="{{ tx.id }}">
+                                <a href="{% url 'receipt_detail' tx.id %}?preview=1" class="btn btn-sm btn-outline-secondary" title="Print Receipt">
                                     Generate Receipt
-                                </button>
+                                </a>
                             </td>
                         </tr>
                     {% endfor %}
