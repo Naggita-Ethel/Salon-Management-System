@@ -294,9 +294,9 @@ document.addEventListener("DOMContentLoaded", function () {
     // --- Dynamic Formset Management ---
     function populateAllItemsDropdown(itemSelectElement, selectedItemId = null) {
         console.log("populateAllItemsDropdown() called for element:", itemSelectElement);
-        itemSelectElement.innerHTML = `<option value="">-- Select Item --</option>`;
+        itemSelectElement.innerHTML = `<option value="">-- Select Product --</option>`;
         if (typeof itemPrices !== 'object' || itemPrices === null || Object.keys(itemPrices).length === 0) {
-            console.warn("itemPrices object is empty, null, or undefined. Cannot populate item dropdown.");
+            console.warn("ProductPrices object is empty, null, or undefined. Cannot populate product dropdown.");
             return;
         }
         for (const itemId in itemPrices) {

@@ -8,8 +8,8 @@ from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import ListView, CreateView, UpdateView, DetailView
 from django.urls import reverse, reverse_lazy
-from .models import Branch, BranchEmployee, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
-from .forms import AddEmployeeForm, BusinessRegisterForm, BusinessSettingsForm, CustomerForm, EditEmployeeForm, LoginForm, TransactionForm, TransactionItemForm
+from .models import Branch, BranchEmployee, BusinessSettings, Coupon, ExpenseCategory, Item, Party, Transaction, TransactionItem, User, UserRole
+from .forms import AddEmployeeForm, BusinessRegisterForm, BusinessSettingsForm, CustomerForm, EditEmployeeForm, LoginForm, ProductPurchaseForm, ProductPurchaseItemForm, TransactionForm, TransactionItemForm
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth import authenticate
@@ -23,10 +23,195 @@ from xhtml2pdf import pisa # If you choose xhtml2pdf
 from django.db.models import Sum, Count
 from django.contrib.humanize.templatetags.humanize import intcomma 
 from django.views.decorators.csrf import csrf_protect
-
+from django.forms import modelformset_factory
 from core import forms
 import io
-from django.template.loader import get_template 
+from django.template.loader import get_template
+
+@login_required
+def product_purchase_list_view(request):
+    branch_id = request.GET.get('branch')
+    branches = Branch.objects.filter(business=request.user.business)
+    selected_branch = branches.filter(id=branch_id).first() if branch_id else None
+    purchases = Transaction.objects.filter(
+        transaction_type='expense',
+        expense_category__name="Product Purchases",
+        branch=selected_branch if selected_branch else branches.first()
+    ).order_by('-created_at')
+    return render(request, 'home/product_purchase_list.html', {
+        'branches': branches,
+        'selected_branch': selected_branch,
+        'purchases': purchases,
+    })
+
+@login_required
+def product_purchase_create_view(request):
+    current_business = request.user.business
+
+    # Ensure your TransactionItemFormSet is correctly defined for Transaction items
+    # If TransactionItem is directly related to a Transaction, inlineformset_factory is usually preferred
+    # but if you're using modelformset_factory without a parent instance, it's for standalone items.
+    # Given your current structure, it seems you want to create new TransactionItems related to a new Transaction.
+    # I'll adjust to inlineformset_factory, which is the standard for parent-child relations.
+    # If modelformset_factory is intentional and you handle linking manually, keep it but note it's less common for this pattern.
+    ProductPurchaseItemFormSet = inlineformset_factory(
+        Transaction,
+        TransactionItem,
+        form=ProductPurchaseItemForm,
+        extra=1,  # Number of empty forms to display
+        can_delete=True,
+    )
+
+    # --- Fetch item prices for JavaScript ---
+    items_data = {}
+    products_queryset = Item.objects.filter(business=current_business, type='product')
+    for item in products_queryset:
+        items_data[str(item.id)] = {
+            'name': item.name,
+            'cost_price': str(item.cost_price), # Convert Decimal to string for JSON serialization
+            'type': item.type,
+        }
+    item_prices_json = json.dumps(items_data)
+
+    if request.method == 'POST':
+        form = ProductPurchaseForm(request.POST)
+
+        # To instantiate the formset, we need a parent instance.
+        # Since this is a new transaction, we create a temporary one.
+        # This instance is used to populate initial data for forms within the formset
+        # and correctly handle the foreign key relationship to Transaction.
+        # It's okay that it's not saved yet; it just provides structure.
+        initial_transaction_instance = Transaction(transaction_type='expense', business=current_business)
+
+        # Get the branch from the main form first, needed for formset's form_kwargs
+        branch = None
+        if form.is_valid():
+            branch = form.cleaned_data.get('branch')
+        else:
+            # Fallback for branch if main form is invalid, just to populate formset dropdowns
+            branch_id_from_post = request.POST.get('branch')
+            if branch_id_from_post:
+                try:
+                    branch = Branch.objects.get(id=branch_id_from_post, business=current_business)
+                except Branch.DoesNotExist:
+                    branch = None
+
+        formset = ProductPurchaseItemFormSet(
+            request.POST,
+            instance=initial_transaction_instance, # Pass the instance here
+            form_kwargs={'business': current_business, 'branch': branch}
+        )
+
+        if form.is_valid() and formset.is_valid():
+            with db_transaction.atomic():
+                purchase = form.save(commit=False)
+                purchase.transaction_type = 'expense'
+                purchase.created_by = request.user
+                purchase.business = current_business # Ensure business is linked
+
+                # Determine and assign supplier
+                supplier_selection_type = form.cleaned_data.get('supplier_selection_type')
+                if supplier_selection_type == 'existing':
+                    purchase.party = form.cleaned_data.get('existing_supplier')
+                elif supplier_selection_type == 'new':
+                    new_supplier_name = form.cleaned_data.get('new_supplier_name')
+                    if new_supplier_name:
+                        supplier, created = Party.objects.get_or_create(
+                            full_name=new_supplier_name,
+                            type='supplier',
+                            business=current_business, # Ensure supplier is linked to business
+                            defaults={
+                                'phone': form.cleaned_data.get('new_supplier_phone'),
+                                'email': form.cleaned_data.get('new_supplier_email'),
+                                'address': form.cleaned_data.get('new_supplier_address'),
+                                'company': form.cleaned_data.get('new_supplier_company'),
+                            }
+                        )
+                        purchase.party = supplier
+                    else:
+                        messages.error(request, "New supplier name is required.")
+                        return render(request, 'home/product_purchase_form.html', {
+                            'form': form,
+                            'formset': formset,
+                            'item_prices_json': item_prices_json,
+                        })
+
+                # Assign expense category for product purchases
+                try:
+                    purchase.expense_category = ExpenseCategory.objects.get(
+                        business=current_business, # Link to current business
+                        name="Product Purchases"
+                    )
+                except ExpenseCategory.DoesNotExist:
+                    # Create if it doesn't exist, or raise an error based on your policy
+                    purchase.expense_category, created = ExpenseCategory.objects.get_or_create(
+                        business=current_business,
+                        name="Product Purchases",
+                        defaults={'description': 'Category for recording product purchase costs.'}
+                    )
+                    messages.info(request, "Product Purchases expense category was created automatically.")
+
+
+                # --- CRITICAL FIX: Calculate total_amount (which maps to 'amount' in your model)
+                #    BEFORE saving the transaction. ---
+                total_calculated_cost = Decimal('0.00')
+                for item_form in formset:
+                    if not item_form.cleaned_data.get('DELETE', False):
+                        item = item_form.cleaned_data.get('item')
+                        quantity = item_form.cleaned_data.get('quantity')
+                        if item and quantity:
+                            item_cost_price = item.cost_price if item.cost_price is not None else Decimal('0.00')
+                            total_calculated_cost += (item_cost_price * quantity)
+
+                # Assign calculated total to the 'amount' field in the Transaction model
+                purchase.amount = total_calculated_cost
+
+                # Handle amount_paid based on payment_status (as per your model's clean method logic)
+                # The form's clean method handles amount_paid vs total_amount validation,
+                # but we need to ensure amount_paid matches the status selected by the user,
+                # especially for 'fully_paid' or 'pending'.
+                if purchase.payment_status == 'fully_paid':
+                    purchase.amount_paid = purchase.amount # If fully paid, amount_paid should equal total
+                elif purchase.payment_status == 'pending':
+                    purchase.amount_paid = Decimal('0.00') # If pending, amount_paid should be zero
+
+                # The Transaction model's .clean() method will be called on .save()
+                # to validate amount_paid against amount and set payment_status.
+                # So we just ensure 'amount' is set, and 'amount_paid' respects the user's choice.
+                purchase.save() # This is the first save, all main fields are now populated
+
+                # Save transaction items with the newly created purchase instance
+                formset.instance = purchase # Link the formset to the saved purchase instance
+                formset.save() # This saves all individual TransactionItem instances
+
+                messages.success(request, "Product purchase recorded successfully!")
+                return redirect('product_purchase_list')
+
+        else:
+            # If form or formset is invalid, re-render with errors
+            messages.error(request, "Please correct the errors below.")
+
+    else: # GET request
+        form = ProductPurchaseForm()
+        # Initial instance for formset on GET to correctly set up relationships for empty forms
+        initial_transaction_instance = Transaction(transaction_type='expense', business=current_business)
+        formset = ProductPurchaseItemFormSet(
+            instance=initial_transaction_instance,
+            queryset=TransactionItem.objects.none(),
+            form_kwargs={'business': current_business, 'branch': None} # No branch initially selected
+        )
+        # Disable employee field by default on empty rows until branch is selected
+        for fs_form in formset:
+            fs_form.fields['employee'].widget.attrs['disabled'] = 'disabled'
+            fs_form.fields['employee'].help_text = 'Select a branch first to see employees.'
+
+    context = {
+        'form': form,
+        'formset': formset,
+        'item_prices_json': item_prices_json,
+    }
+    
+    return render(request, 'home/product_purchase_form.html', context)
 
 def customer_list_view(request):
     customers = Party.objects.filter(type='customer')
@@ -65,10 +250,18 @@ def customer_edit_view(request, pk):
         form = CustomerForm(instance=customer)
     return render(request, 'home/customer_form.html', {'form': form})
 
+from django.contrib import messages
+
 def customer_delete_view(request, pk):
     customer = get_object_or_404(Party, pk=pk)
+    # Check if this customer is used in any transaction
+    is_used = Transaction.objects.filter(party=customer).exists()
+    if is_used:
+        messages.error(request, "This customer cannot be deleted because they have transactions.")
+        return redirect('customer_list')
     if request.method == 'POST':
         customer.delete()
+        messages.success(request, "Customer deleted successfully.")
         return redirect('customer_list')
     return render(request, 'home/customer_confirm_delete.html', {'customer': customer})
 

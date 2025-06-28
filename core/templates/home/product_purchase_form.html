@@ -1,0 +1,219 @@
+{% extends "layouts/base.html" %}
+{% load widget_tweaks %}
+{% load static %}
+
+{% block title %}Add Product Purchase{% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item"><a href="">Expenses</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'product_purchase_list' %}">Product Purchases</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Add Product Purchase</li>
+        </ol>
+    </nav>
+    <h1 class="h4">Add Product Purchase</h1>
+</div>
+<div class="card border-0 shadow components-section">
+    <div class="card-body">
+        {% if messages %}
+            {% for message in messages %}
+            <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                {{ message }}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            </div>
+            {% endfor %}
+        {% endif %}
+        <form method="post" novalidate>
+            {% csrf_token %}
+            <input type="hidden" id="id_amount" name="amount" value="0">
+            <h5 class="mt-4 mb-3">Products Purchased</h5>
+            <div class="col-md-6 mb-3">
+                    <label for="{{ form.branch.id_for_label }}">Branch</label>
+                    {{ form.branch|add_class:"form-control" }}
+                    {% if form.branch.errors %}
+                        <div class="text-danger">{{ form.branch.errors }}</div>
+                    {% endif %}
+                </div>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="transaction-items-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th>Product</th>
+                            <th>Quantity</th>
+                            <th>Serviced By</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                    {% for fs_form in formset %}
+                    <tr class="formset-row">
+                        <td>
+                            {{ fs_form.item|add_class:"form-control" }}
+                            {% if fs_form.item.errors %}
+                                <div class="text-danger">{{ fs_form.item.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ fs_form.quantity|add_class:"form-control" }}
+                            {% if fs_form.quantity.errors %}
+                                <div class="text-danger">{{ fs_form.quantity.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {{ fs_form.employee|add_class:"form-control employee-select" }}
+                            {% if fs_form.employee.errors %}
+                                <div class="text-danger">{{ fs_form.employee.errors }}</div>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if fs_form.instance.pk %}
+                                {{ fs_form.DELETE }}
+                                <label for="{{ fs_form.DELETE.id_for_label }}" class="ms-2">Delete?</label>
+                            {% else %}
+                                <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
+                            {% endif %}
+                            {{ fs_form.id }} {# Keep the ID hidden field for formset to track #}
+                            {{ fs_form.DELETE.as_hidden }} {# Ensure DELETE is handled correctly if not rendered as checkbox #}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    <tr class="empty-form-template d-none">
+                        <td>
+                            <select name="form-__prefix__-item" class="form-control"></select>
+                        </td>
+                        <td>
+                            <input type="number" name="form-__prefix__-quantity" class="form-control" value="1" min="1">
+                        </td>
+                        <td>
+                            <select name="form-__prefix__-employee" class="form-control employee-select"></select>
+                        </td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
+                            <input type="hidden" name="form-__prefix__-id" id="id_form-__prefix__-id">
+                            <input type="hidden" name="form-__prefix__-DELETE" id="id_form-__prefix__-DELETE">
+                        </td>
+                    </tr>
+             </tbody>
+                </table>
+                
+            </div>
+            {{ formset.management_form }} 
+            <button type="button" id="add-item-button" class="btn btn-secondary mt-2"><i class="bi bi-plus-lg me-2"></i>Add Another Product</button>
+            <div class="row mt-4">
+                <div class="col-md-4 mb-3">
+                    <label>Subtotal</label>
+                    <input type="text" id="subtotal_display" class="form-control" readonly value="0.00">
+                </div>
+                <div class="col-md-4 mb-3" id="discount_display_section" style="display:none;">
+                    <label>Total Discount</label>
+                    <input type="text" id="total_discount_display" class="form-control" readonly value="0.00">
+                </div>
+                <div class="col-md-4 mb-3">
+                    <label>Grand Total</label>
+                    <input type="text" id="grand_total_display" class="form-control form-control-lg" readonly value="0.00">
+                </div>
+            </div>
+            <h5 class="mt-4 mb-3">Supplier Information</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.supplier_selection_type.id_for_label }}">Supplier Type</label>
+                    {{ form.supplier_selection_type|add_class:"form-control" }}
+                    {% if form.supplier_selection_type.errors %}
+                        <div class="text-danger">{{ form.supplier_selection_type.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div id="existing_supplier_fields" class="row">
+                <div class="col-12 mb-3">
+                    <label for="{{ form.existing_supplier.id_for_label }}">Select Existing Supplier</label>
+                    {{ form.existing_supplier|add_class:"form-control" }}
+                    {% if form.existing_supplier.errors %}
+                        <div class="text-danger">{{ form.existing_supplier.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <div id="new_supplier_fields" class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_supplier_name.id_for_label }}">Full Name</label>
+                    {{ form.new_supplier_name|add_class:"form-control" }}
+                    {% if form.new_supplier_name.errors %}
+                        <div class="text-danger">{{ form.new_supplier_name.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_supplier_phone.id_for_label }}">Phone Number</label>
+                    {{ form.new_supplier_phone|add_class:"form-control" }}
+                    {% if form.new_supplier_phone.errors %}
+                        <div class="text-danger">{{ form.new_supplier_phone.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_supplier_email.id_for_label }}">Email</label>
+                    {{ form.new_supplier_email|add_class:"form-control" }}
+                    {% if form.new_supplier_email.errors %}
+                        <div class="text-danger">{{ form.new_supplier_email.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.new_supplier_company.id_for_label }}">Company</label>
+                    {{ form.new_supplier_company|add_class:"form-control" }}
+                    {% if form.new_supplier_company.errors %}
+                        <div class="text-danger">{{ form.new_supplier_company.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12 mb-3">
+                    <label for="{{ form.new_supplier_address.id_for_label }}">Company Address</label>
+                    {{ form.new_supplier_address|add_class:"form-control" }}
+                    {% if form.new_supplier_address.errors %}
+                        <div class="text-danger">{{ form.new_supplier_address.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            <h5 class="mb-4">Purchase Details</h5>
+            <div class="row">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.payment_method.id_for_label }}">Payment Method</label>
+                    {{ form.payment_method|add_class:"form-control" }}
+                    {% if form.payment_method.errors %}
+                        <div class="text-danger">{{ form.payment_method.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-12 mb-3">
+                <div class="col-md-6 mb-3">
+                    <label for="{{ form.payment_status.id_for_label }}">Payment Status</label>
+                    {{ form.payment_status|attr:"class:form-control" }}
+                    {% if form.payment_status.errors %}
+                        <div class="text-danger">{{ form.payment_status.errors }}</div>
+                    {% endif %}
+                </div>
+                <div class="col-md-6 mb-3" id="amount_paid_field">
+                    <label for="{{ form.amount_paid.id_for_label }}">Amount Paid</label>
+                    {{ form.amount_paid|attr:"class:form-control" }}
+                    {% if form.amount_paid.errors %}
+                        <div class="text-danger">{{ form.amount_paid.errors }}</div>
+                    {% endif %}
+                </div>
+            </div>
+            {{ formset.management_form }}
+            <div class="text-center">
+                <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">
+                    <i class="bi bi-save me-2"></i>Save Purchase
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block javascripts %}
+    <script>
+        // Ensure itemPrices and BUSINESS_SETTINGS are properly passed and are not empty/malformed
+        const itemPrices = {{ item_prices_json|safe }};
+        var subtotalDisplay = document.getElementById('subtotal_display');
+        var grandTotalDisplay = document.getElementById('grand_total_display');
+        const CSRF_TOKEN = "{{ csrf_token }}";
+    </script>
+    <script src="{% static 'assets/js/product_purchase.js' %}"></script>
+{% endblock javascripts %}

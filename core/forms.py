@@ -5,6 +5,90 @@ from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 
+class SupplierForm(forms.ModelForm):
+    class Meta:
+        model = Party
+        fields = ['full_name', 'phone', 'email', 'address', 'company']
+    def save(self, commit=True):
+        instance = super().save(commit=False)
+        instance.type = 'supplier'
+        if commit:
+            instance.save()
+        return instance
+
+class ProductPurchaseForm(forms.ModelForm):
+    supplier_selection_type = forms.ChoiceField(
+        choices=[('existing', 'Existing Supplier'), ('new', 'New Supplier')],
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    existing_supplier = forms.ModelChoiceField(
+        queryset=Party.objects.filter(type='supplier'),
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+    # New supplier fields
+    new_supplier_name = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    new_supplier_phone = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    new_supplier_email = forms.EmailField(required=False, widget=forms.EmailInput(attrs={'class': 'form-control'}))
+    new_supplier_address = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+    new_supplier_company = forms.CharField(required=False, widget=forms.TextInput(attrs={'class': 'form-control'}))
+
+    class Meta:
+        model = Transaction
+        fields = ['branch', 'payment_method', 'payment_status', 'amount_paid',]
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get('supplier_selection_type') == 'existing' and not cleaned.get('existing_supplier'):
+            self.add_error('existing_supplier', 'Please select a supplier.')
+        if cleaned.get('supplier_selection_type') == 'new' and not cleaned.get('new_supplier_name'):
+            self.add_error('new_supplier_name', 'Please enter the supplier name.')
+        return cleaned
+
+    def get_supplier(self, business):
+        if self.cleaned_data['supplier_selection_type'] == 'existing':
+            return self.cleaned_data['existing_supplier']
+        else:
+            supplier, _ = Party.objects.get_or_create(
+                full_name=self.cleaned_data['new_supplier_name'],
+                phone=self.cleaned_data['new_supplier_phone'],
+                email=self.cleaned_data['new_supplier_email'],
+                address=self.cleaned_data['new_supplier_address'],
+                company=self.cleaned_data['new_supplier_company'],
+                type='supplier',
+                business=business
+            )
+            return supplier
+
+class ProductPurchaseItemForm(forms.ModelForm):
+    class Meta:
+        model = TransactionItem
+        fields = ['item', 'quantity', 'employee']
+        widgets = {
+            'item': forms.Select(attrs={'class': 'form-control'}),
+            'quantity': forms.NumberInput(attrs={'class': 'form-control'}),
+            'employee': forms.Select(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        business = kwargs.pop('business', None)
+        branch = kwargs.pop('branch', None)  # <-- Accept branch
+        super().__init__(*args, **kwargs)
+        qs = Item.objects.filter(type='product')
+        if business:
+            qs = qs.filter(business=business)
+        self.fields['item'].queryset = qs
+        # Optionally, filter employee queryset by branch if needed:
+        if branch: # If a branch is selected/provided
+            self.fields['employee'].queryset = BranchEmployee.objects.filter(
+                branch=branch, status='active'
+            ).select_related('user').order_by('user__full_name')
+            self.fields['employee'].widget.attrs.pop('disabled', None) # Remove disabled if branch is set
+        else:
+            self.fields['employee'].queryset = BranchEmployee.objects.none()
+            # self.fields['employee'].widget.attrs['disabled'] = 'disabled' # Keep disabled if no branch
+            self.fields['employee'].help_text = 'Select a branch first to see employees.'
+
 
 class TransactionForm(forms.ModelForm):
     CUSTOMER_CHOICES = [
@@ -46,7 +130,8 @@ class TransactionForm(forms.ModelForm):
     
     class Meta:
         model = Transaction
-        fields = ['branch', 'payment_method', 'is_paid']
+        fields = ['branch', 'payment_method', 'payment_status',   # <-- Add this line
+            'amount_paid',]
 
     def __init__(self, *args, user=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -420,15 +505,32 @@ class BusinessSettingsForm(forms.ModelForm):
 class CustomerForm(forms.ModelForm):
     class Meta:
         model = Party
-        fields = ['gender', 'full_name', 'phone', 'email', 'address']  # REMOVE 'type' and 'loyalty_points'
+        fields = ['gender', 'full_name', 'phone', 'email', 'address']
         widgets = {
             'address': forms.TextInput(attrs={'class': 'form-control', 'maxlength': 150}),
         }
 
+    def clean(self):
+        cleaned_data = super().clean()
+        email = cleaned_data.get('email')
+        phone = cleaned_data.get('phone')
+
+        # Exclude self when editing
+        qs = Party.objects.filter(type='customer')
+        if self.instance.pk:
+            qs = qs.exclude(pk=self.instance.pk)
+
+        if email and qs.filter(email=email).exists():
+            self.add_error('email', 'A customer with this email already exists.')
+        if phone and qs.filter(phone=phone).exists():
+            self.add_error('phone', 'A customer with this phone number already exists.')
+
+        return cleaned_data
+
     def save(self, commit=True):
         instance = super().save(commit=False)
-        instance.type = 'customer'  # Always set type to 'customer'
-        instance.loyalty_points = instance.loyalty_points or 0  # Default to 0 if not set
+        instance.type = 'customer'
+        instance.loyalty_points = 0
         if commit:
             instance.save()
         return instance

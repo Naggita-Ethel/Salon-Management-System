@@ -7,6 +7,8 @@ from django.utils import timezone
 from django.core.validators import MinValueValidator, MaxValueValidator
 from django.db.models import Sum, Count # Import these for aggregation
 from decimal import Decimal # Important for financial calculations
+from django.db.models.signals import post_save
+from django.dispatch import receiver
 
 
 class User(AbstractUser):
@@ -149,6 +151,23 @@ class Party(models.Model):
         return visits
 
 class Transaction(models.Model):
+    PAYMENT_STATUS_CHOICES = [
+        ('fully_paid', 'Fully Paid'),
+        ('partially_paid', 'Partially Paid'),
+        ('pending', 'Not Paid / Pending'),
+    ]
+    payment_status = models.CharField(
+        max_length=20,
+        choices=PAYMENT_STATUS_CHOICES,
+        default='pending',
+        help_text="Tracks if the transaction is fully paid, partially paid, or pending."
+    )
+
+    amount_paid = models.DecimalField(
+        max_digits=12, decimal_places=0, default=0,
+        help_text="Amount paid so far for this transaction (for partial payments)."
+    )
+
     TRANSACTION_TYPE_CHOICES = [
         ('revenue', 'Customer Purchase'),  # money coming in
         ('expense', 'Expense'),             # money going out
@@ -211,8 +230,7 @@ class Transaction(models.Model):
 
     loyalty_points_earned = models.IntegerField(default=0)
     loyalty_points_redeemed = models.IntegerField(default=0)
-
-    created_at = models.DateTimeField(auto_now_add=True)
+    business = models.ForeignKey('Business', on_delete=models.CASCADE, related_name='transactions')
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
     expense_name = models.CharField(max_length=200, blank=True, null=True)
@@ -283,6 +301,14 @@ class ExpenseCategory(models.Model):
 
     def __str__(self):
         return self.name
+    
+@receiver(post_save, sender=Business)
+def create_product_purchase_category(sender, instance, created, **kwargs):
+    if created:
+        ExpenseCategory.objects.get_or_create(
+            business=instance,
+            name="Product Purchases"
+        )
 
 
 class BusinessSettings(models.Model):

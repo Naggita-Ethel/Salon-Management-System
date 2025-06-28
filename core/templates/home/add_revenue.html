@@ -46,35 +46,83 @@
 
         <form method="post" novalidate>
             {% csrf_token %}
-            <h5 class="mb-4">Transaction Details</h5>
-            <div class="row">
-                <div class="col-md-6 mb-3">
+            <h5 class="mt-4 mb-3">Items Purchased</h5>
+            <div class="col-md-6 mb-3">
                     <label for="{{ form.branch.id_for_label }}">Branch</label>
                     {{ form.branch|attr:"class:form-control" }}
                     {% if form.branch.errors %}
                         <div class="text-danger">{{ form.branch.errors }}</div>
                     {% endif %}
                 </div>
+            <div class="table-responsive">
+                <table class="table table-bordered" id="transaction-items-table">
+                    <thead class="thead-light">
+                        <tr>
+                            <th style="width: 40%;">Item</th>
+                            <th style="width: 15%;">Quantity</th>
+                            <th style="width: 30%;">Serviced By</th>
+                            <th style="width: 15%;">Action</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {# THIS IS THE CRITICAL SECTION FOR FORMSET RENDERING #}
+                        {# Ensure the 'id' attribute for each field is exactly like this: id_items-0-item, id_items-0-quantity etc. #}
+                        {# Django's formset rendering creates these IDs. #}
+                        {% for fs_form in formset %}
+                        <tr class="formset-row">
+                            <td>
+                                {{ fs_form.item|attr:"class:form-control item-select" }}
+                                {% if fs_form.item.errors %}
+                                    <div class="text-danger">{{ fs_form.item.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ fs_form.quantity|attr:"class:form-control quantity-input" }}
+                                {% if fs_form.quantity.errors %}
+                                    <div class="text-danger">{{ fs_form.quantity.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {{ fs_form.employee|attr:"class:form-control employee-select" }}
+                                {% if fs_form.employee.errors %}
+                                    <div class="text-danger">{{ fs_form.employee.errors }}</div>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if fs_form.instance.pk %}
+                                    {# If it's an existing item being edited, show checkbox to delete #}
+                                    {{ fs_form.DELETE }}
+                                    <label for="{{ fs_form.DELETE.id_for_label }}" class="ms-2">Delete?</label>
+                                {% else %}
+                                    {# If it's a new item (empty form in formset), provide a remove button #}
+                                    <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
+                                {% endif %}
+                                {{ fs_form.id }} {# Hidden ID field for formset management #}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            {{ formset.management_form }} {# CRITICAL FOR DJANGO FORMSET #}
+            
+            <button type="button" id="add-item-button" class="btn btn-secondary mt-2"><i class="bi bi-plus-lg me-2"></i>Add Another Item</button>
+            <h5 class="mt-4 mb-3">Amount</h5>
+            <div class="row">
                 <div class="col-md-6 mb-3">
-                    <label for="{{ form.payment_method.id_for_label }}">Payment Method</label>
-                    {{ form.payment_method|attr:"class:form-control" }}
-                    {% if form.payment_method.errors %}
-                        <div class="text-danger">{{ form.payment_method.errors }}</div>
-                    {% endif %}
+                    <label>Subtotal</label>
+                    <input type="text" id="subtotal_display" class="form-control" readonly value="0.00">
+                </div>
+                <div class="col-md-6 mb-3" id="discount_display_section" style="display:none;">
+                    <label>Total Discount</label>
+                    <input type="text" id="total_discount_display" class="form-control" readonly value="0.00">
                 </div>
                 <div class="col-12 mb-3">
-                    <div class="form-check">
-                        {{ form.is_paid|attr:"class:form-check-input" }}
-                        <label class="form-check-label" for="{{ form.is_paid.id_for_label }}">
-                            {{ form.is_paid.label }}
-                        </label>
-                        {% if form.is_paid.errors %}
-                            <div class="text-danger">{{ form.is_paid.errors }}</div>
-                        {% endif %}
-                    </div>
+                    <label>Grand Total</label>
+                    <input type="text" id="grand_total_display" class="form-control form-control-lg" readonly value="0.00">
                 </div>
             </div>
-
             <h5 class="mt-4 mb-3">Customer Information</h5>
             <div class="row">
                 <div class="col-md-6 mb-3">
@@ -165,75 +213,30 @@
                 <span id="coupon_status" class="form-text text-muted"></span>
             </div>
 
-            <h5 class="mt-4 mb-3">Items Purchased</h5>
-            <div class="table-responsive">
-                <table class="table table-bordered" id="transaction-items-table">
-                    <thead class="thead-light">
-                        <tr>
-                            <th style="width: 40%;">Item</th>
-                            <th style="width: 15%;">Quantity</th>
-                            <th style="width: 30%;">Serviced By</th>
-                            <th style="width: 15%;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {# THIS IS THE CRITICAL SECTION FOR FORMSET RENDERING #}
-                        {# Ensure the 'id' attribute for each field is exactly like this: id_items-0-item, id_items-0-quantity etc. #}
-                        {# Django's formset rendering creates these IDs. #}
-                        {% for fs_form in formset %}
-                        <tr class="formset-row">
-                            <td>
-                                {{ fs_form.item|attr:"class:form-control item-select" }}
-                                {% if fs_form.item.errors %}
-                                    <div class="text-danger">{{ fs_form.item.errors }}</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {{ fs_form.quantity|attr:"class:form-control quantity-input" }}
-                                {% if fs_form.quantity.errors %}
-                                    <div class="text-danger">{{ fs_form.quantity.errors }}</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {{ fs_form.employee|attr:"class:form-control employee-select" }}
-                                {% if fs_form.employee.errors %}
-                                    <div class="text-danger">{{ fs_form.employee.errors }}</div>
-                                {% endif %}
-                            </td>
-                            <td>
-                                {% if fs_form.instance.pk %}
-                                    {# If it's an existing item being edited, show checkbox to delete #}
-                                    {{ fs_form.DELETE }}
-                                    <label for="{{ fs_form.DELETE.id_for_label }}" class="ms-2">Delete?</label>
-                                {% else %}
-                                    {# If it's a new item (empty form in formset), provide a remove button #}
-                                    <button type="button" class="btn btn-sm btn-outline-danger remove-item-button">Remove</button>
-                                {% endif %}
-                                {{ fs_form.id }} {# Hidden ID field for formset management #}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-            {{ formset.management_form }} {# CRITICAL FOR DJANGO FORMSET #}
-            <button type="button" id="add-item-button" class="btn btn-secondary mt-2"><i class="bi bi-plus-lg me-2"></i>Add Another Item</button>
-
-            <h5 class="mt-4 mb-3">Summary</h5>
+            <h5 class="mb-4">Transaction Details</h5>
             <div class="row">
+                
                 <div class="col-md-6 mb-3">
-                    <label>Subtotal</label>
-                    <input type="text" id="subtotal_display" class="form-control" readonly value="0.00">
-                </div>
-                <div class="col-md-6 mb-3" id="discount_display_section" style="display:none;">
-                    <label>Total Discount</label>
-                    <input type="text" id="total_discount_display" class="form-control" readonly value="0.00">
+                    <label for="{{ form.payment_method.id_for_label }}">Payment Method</label>
+                    {{ form.payment_method|attr:"class:form-control" }}
+                    {% if form.payment_method.errors %}
+                        <div class="text-danger">{{ form.payment_method.errors }}</div>
+                    {% endif %}
                 </div>
                 <div class="col-12 mb-3">
-                    <label>Grand Total</label>
-                    <input type="text" id="grand_total_display" class="form-control form-control-lg" readonly value="0.00">
+                    <div class="form-check">
+                        {{ form.is_paid|attr:"class:form-check-input" }}
+                        <label class="form-check-label" for="{{ form.is_paid.id_for_label }}">
+                            {{ form.is_paid.label }}
+                        </label>
+                        {% if form.is_paid.errors %}
+                            <div class="text-danger">{{ form.is_paid.errors }}</div>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
+            
+            
 
             <div class="text-center">
                 <button type="submit" class="btn btn-primary mt-3" style="background-color: #F8BD7A; color: #262B40; border: none;">

@@ -160,15 +160,15 @@
                   role="list" id="submenu-app" aria-expanded="false">
                   <ul class="flex-column nav">
                     <li class="nav-item {% if 'bootstrap-tables' in segment %} active {% endif %}">
-                      <a class="nav-link" href="">
-                        <span class="sidebar-text">Add Expense Category</span>
+                      <a class="nav-link" href="{% url 'product_purchase_list'%}">
+                        <span class="sidebar-text">Product purchases</span>
                       </a>
                     </li>
                   </ul>
                   <ul class="flex-column nav">
                     <li class="nav-item {% if 'bootstrap-tables' in segment %} active {% endif %}">
                       <a class="nav-link" href="{% url 'expenses'%}">
-                        <span class="sidebar-text">Add Expense</span>
+                        <span class="sidebar-text">Add Another Expense</span>
                       </a>
                     </li>
                   </ul>
