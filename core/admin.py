@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth import get_user_model
-from core.models import Branch, BranchEmployee, Business, BusinessSettings, Coupon, ExpenseCategory,Item, Party, Transaction, UserRole
+from core.models import Branch, BranchEmployee, Business, BusinessSettings, Coupon, ExpenseCategory,Item, Party, Payment, Transaction, TransactionItem, UserRole
 
 # Use the custom user model
 User = get_user_model()
@@ -8,6 +8,29 @@ User = get_user_model()
 # Dynamically show all model fields in the admin list display
 def all_fields(model):
     return [field.name for field in model._meta.fields]
+
+@admin.register(Payment)
+class PaymentAdmin(admin.ModelAdmin):
+    list_display = ('transaction', 'amount', 'payment_date', 'payment_method')
+    list_filter = ('payment_method', 'payment_date')
+    search_fields = ('transaction__id', 'notes')
+    date_hierarchy = 'payment_date'
+    raw_id_fields = ('transaction',) # Useful for ForeignKey fields to avoid huge dropdowns
+
+# Register the TransactionItem model
+@admin.register(TransactionItem)
+class TransactionItemAdmin(admin.ModelAdmin):
+    list_display = ('transaction', 'item', 'quantity', 'employee', 'total_price')
+    list_filter = ('employee', 'item')
+    search_fields = ('transaction__id', 'item__name') # Assuming 'Item' has a 'name' field
+    raw_id_fields = ('transaction', 'item', 'employee') # Useful for ForeignKey fields
+    
+    # Define total_price as a method to be displayed in list_display
+    def total_price(self, obj):
+        return obj.total_price()
+    
+    total_price.short_description = 'Total Price' # Column header name in admin
+
 
 # Register your models here.
 @admin.register(Business)

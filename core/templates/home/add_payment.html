@@ -1,0 +1,76 @@
+{% extends "layouts/base.html" %}
+{% load humanize %}
+{% load widget_tweaks %} {# Add this line for better form styling #}
+
+{% block title %}Add Payment{% endblock %}
+
+{% block content %}
+<div class="py-4">
+    <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
+        <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
+            <li class="breadcrumb-item">
+                <a href="{% url 'dashboard' %}"> {# Changed to a common 'dashboard' URL #}
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
+                </a>
+            </li>
+            <li class="breadcrumb-item"><a href="">Expenses</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'product_purchase_list'%}">Product Purchases</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'product_purchase_detail' transaction.id %}">Payment Details</a></li>
+            <li class="breadcrumb-item active" aria-current="page">Add Payment</li>
+        </ol>
+    </nav>
+    <div class="d-flex justify-content-between w-100 flex-wrap">
+        <div class="mb-3 mb-lg-0">
+            <h1 class="h4">Add Payment</h1>
+            <p class="mb-0">Add payment for this purchase transaction.</p>
+        </div>
+    </div>
+</div>
+
+<div class="container py-4">
+    {# Purchase Summary Card #}
+    <div class="card border-0 shadow mb-4">
+        <div class="card-header border-bottom">
+            <h5 class="mb-0">Purchase #{{ transaction.id }}</h5>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="card-text mb-1"><strong>Supplier:</strong> {{ transaction.party.full_name }}</p>
+                    <p class="card-text mb-1"><strong>Total Amount:</strong> UGX {{ transaction.amount|intcomma }}</p>
+                </div>
+                <div class="col-md-6">
+                    <p class="card-text mb-1"><strong>Amount Paid:</strong> UGX {{ transaction.amount_paid|intcomma }}</p>
+                    <p class="card-text mb-0"><strong>Balance:</strong> UGX {{ balance|intcomma }}</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    {# Add Payment Form Card #}
+    <div class="card border-0 shadow">
+        <div class="card-header border-bottom">
+            <h5 class="mb-0">Payment Details</h5>
+        </div>
+        <div class="card-body p-4">
+            <form method="post">
+                {% csrf_token %}
+                {% for field in form %}
+                    <div class="mb-3">
+                        <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
+                        {# Use render_field from widget_tweaks to apply Bootstrap's form-control class #}
+                        {% render_field field class="form-control" %} 
+                        {% if field.help_text %}
+                            <div class="form-text text-muted">{{ field.help_text }}</div>
+                        {% endif %}
+                        {% for error in field.errors %}
+                            <div class="text-danger small">{{ error }}</div>
+                        {% endfor %}
+                    </div>
+                {% endfor %}
+                <button type="submit" class="btn btn-sm btn-gray-800 d-inline-flex align-items-center" style="background-color: #F8BD7A; color: #262B40; border: none;">Add Payment</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

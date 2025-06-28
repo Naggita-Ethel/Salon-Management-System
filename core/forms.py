@@ -1,9 +1,26 @@
 from datetime import timezone
 from django import forms
-from .models import Branch, BranchEmployee, Business, BusinessSettings, Coupon, Item, Party, Transaction, TransactionItem, User, UserRole
+from .models import Branch, BranchEmployee, Business, BusinessSettings, Coupon, Item, Party, Payment, Transaction, TransactionItem, User, UserRole
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
+
+PAYMENT_METHOD_CHOICES = [
+    ('Cash', 'Cash'),
+    ('Mobile Money', 'Mobile Money'),
+    ('Card', 'Card'),
+    # Add more as needed
+]
+
+class PaymentForm(forms.ModelForm):
+    payment_method = forms.ChoiceField(
+        choices=PAYMENT_METHOD_CHOICES,
+        widget=forms.Select(attrs={'class': 'form-control'})
+    )
+
+    class Meta:
+        model = Payment
+        fields = ['amount', 'payment_method', 'notes']
 
 class SupplierForm(forms.ModelForm):
     class Meta:

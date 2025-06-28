@@ -9,11 +9,10 @@
         <nav aria-label="breadcrumb" class="d-none d-md-inline-block">
             <ol class="breadcrumb breadcrumb-dark breadcrumb-transparent">
                 <li class="breadcrumb-item">
-                    <a href="{% url 'dashboard' %}">
-                        <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" 
-                                d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-                        </svg>
+                    <a href="#">
+                    <svg class="icon icon-xxs" fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        xmlns="http://www.w3.org/2000/svg"><path stroke-linecap="round" stroke-linejoin="round"
+                        stroke-width="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"></path></svg>
                     </a>
                 </li>
                 <li class="breadcrumb-item"><a href="">Expenses</a></li>
@@ -25,8 +24,10 @@
     </div>
     <div class="btn-toolbar mb-2 mb-md-0">
         <a href="{% url 'product_purchase_create' %}" class="btn btn-sm btn-gray-800 d-inline-flex align-items-center" style="background-color: #F8BD7A; color: #262B40; border: none;">
-            <svg class="icon icon-xs me-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+            <svg class="icon icon-xs me-2" fill="none" stroke="currentColor"
+                viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                    d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
             </svg>
             New Product Purchase
         </a>
@@ -53,11 +54,10 @@
                         <th>Supplier</th>
                         <th>Items Purchased</th>
                         <th>Payment Method</th>
-                        <th>Amount</th>
-                        <th>Purchase Date</th>
-                        <th>Status</th>
+                        <th>Total Amount</th>
                         <th>Payment Status</th>
-                        <th>Paid At</th>
+                        <th>Amount Paid</th>
+                        <th>Purchase Date</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -65,12 +65,14 @@
                         <tr>
                             <td>{{ forloop.counter }}</td>
                             <td>
-                                {% if tx.party %}
-                                    {{ tx.party.full_name }}<br>
-                                    <small>{{ tx.party.company }}</small>
-                                {% else %}
-                                    <em>Unknown</em>
-                                {% endif %}
+                                <a href="{% url 'product_purchase_detail' tx.id %}">
+                                    {% if tx.party %}
+                                        {{ tx.party.full_name }}<br>
+                                        <small>({{ tx.party.company }})</small>
+                                    {% else %}
+                                        <em>Unknown</em>
+                                    {% endif %}
+                                </a>
                             </td>
                             <td>
                                 {% for tx_item in tx.transaction_items.all %}
@@ -81,23 +83,6 @@
                             </td>
                             <td>{{ tx.payment_method }}</td>
                             <td>UGX {{ tx.amount|intcomma }}</td>
-                            <td>{{ tx.created_at|date:"Y-m-d H:i" }}</td>
-                            <td>
-                                <span class="badge 
-                                    {% if tx.status == 'completed' %}bg-success
-                                    {% elif tx.status == 'voided' %}bg-danger
-                                    {% elif tx.status == 'refunded' %}bg-info
-                                    {% else %}bg-secondary{% endif %}">
-                                    {{ tx.status|capfirst }}
-                                </span>
-                            </td>
-                            <td>
-                                {% if tx.is_paid %}
-                                    <span class="badge bg-success">Paid</span>
-                                {% else %}
-                                    <span class="badge bg-warning text-dark">Pending</span>
-                                {% endif %}
-                            </td>
                             <td>
                                 {% if tx.payment_status == "fully_paid" %}
                                     <span class="badge bg-success">Fully Paid</span>
@@ -107,13 +92,8 @@
                                     <span class="badge bg-warning text-dark">Pending</span>
                                 {% endif %}
                             </td>
-                            <td>
-                                {% if tx.paid_at %}
-                                    {{ tx.paid_at|date:"Y-m-d H:i" }}
-                                {% else %}
-                                    <em>Not paid</em>
-                                {% endif %}
-                            </td>
+                            <td>UGX {{ tx.amount_paid|intcomma }}</td>
+                            <td>{{ tx.created_at|date:"Y-m-d H:i" }}</td>
                         </tr>
                     {% endfor %}
                 </tbody>

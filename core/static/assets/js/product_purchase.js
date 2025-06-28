@@ -57,7 +57,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
-        if (!window.itemPrices) return;
+        if (!itemPrices) return;
 
 
 
@@ -65,7 +65,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 
 
-        for (const itemId in window.itemPrices) {
+        for (const itemId in itemPrices) {
 
 
 
@@ -193,10 +193,10 @@ document.addEventListener("DOMContentLoaded", function () {
         // Adjust amount_paid field behavior based on payment status and calculated total
         if (paymentStatusSelector && amountPaidInput) {
             if (paymentStatusSelector.value === 'fully_paid') {
-                amountPaidInput.value = subtotal.toFixed(2); // Auto-fill if fully paid
+                amountPaidInput.value = Math.round(subtotal); // Auto-fill if fully paid
                 amountPaidInput.readOnly = false; // Make it read-only
             } else if (paymentStatusSelector.value === 'pending') {
-                amountPaidInput.value = '0.00'; // Set to 0 if pending
+                amountPaidInput.value = '0'; // Set to 0 if pending
                 amountPaidInput.readOnly = false; // Make it read-only
             } else { // partially_paid
                 amountPaidInput.readOnly = false; // Allow user input for partial payments
@@ -208,37 +208,27 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
 
-        console.log("Calculating totals...");
-        console.log("itemPrices:", itemPrices);
-        console.log("Rows:", document.querySelectorAll('.formset-row').length);
+    
     }
 
 
-
-
     function toggleAmountPaidField() {
-
-        if (paymentStatusSelector && amountPaidField && amountPaidInput) {
-
-            if (paymentStatusSelector.value === "partially_paid") {
-
-                amountPaidField.style.display = "";
-
-                amountPaidInput.setAttribute('required', 'required'); // Use setAttribute
-
-            } else {
-
-                amountPaidField.style.display = "none";
-
-                amountPaidInput.removeAttribute('required'); // Use removeAttribute
-
-                amountPaidInput.value = "";
-
-            }
-
-        }
-
-    }
+        if (paymentStatusSelector && amountPaidField && amountPaidInput) {
+            if (paymentStatusSelector.value === "partially_paid") {
+                amountPaidField.style.display = "";
+                amountPaidInput.setAttribute('required', 'required');
+            } else {
+                amountPaidField.style.display = "none";
+                amountPaidInput.removeAttribute('required');
+                // Set a default value so the field is not empty
+                if (paymentStatusSelector.value === "fully_paid") {
+                    amountPaidInput.value = hiddenAmountInput ? hiddenAmountInput.value : "0";
+                } else {
+                    amountPaidInput.value = "0";
+                }
+            }
+        }
+    }
 
     // --- Initial Setup and Event Attachments ---
 
@@ -326,6 +316,12 @@ document.addEventListener("DOMContentLoaded", function () {
 
         newFormRow.innerHTML = newFormRow.innerHTML.replace(/__prefix__/g, formsetIndex);
         transactionItemsTableBody.appendChild(newFormRow);
+
+        // --- ADD THIS: Populate the product dropdown for the new row ---
+        const itemSelect = newFormRow.querySelector('[name$="-item"]');
+        if (itemSelect) {
+            populateProductItemsDropdown(itemSelect);
+        }
 
         initializeFormsetRow(newFormRow);
         updateManagementFormTotalForms();

@@ -1,6 +1,7 @@
 {% extends "layouts/base.html" %}
 {% load humanize %}
 
+
 {% block title %} Services and Products {% endblock %}
 
 {% block content %}
@@ -55,7 +56,19 @@
 <div class="card border-0 shadow mb-4">
     <div class="card-body">
         {% if selected_type == 'product' %}
-            <h5>Products</h5>
+            <form method="get" class="d-inline-block ms-2 mb-3">
+                <input type="hidden" name="type" value="product">
+                <select name="branch" class="form-select form-select-sm d-inline-block"
+                    style="min-width: 180px; width: auto; display: inline-block;"
+                    onchange="this.form.submit()">
+                <option value="">All Branches</option>
+                {% for branch in branches %}
+                    <option value="{{ branch.id }}" {% if selected_branch and branch.id == selected_branch.id %}selected{% endif %}>
+                        {{ branch.name }}
+                    </option>
+                {% endfor %}
+            </select>
+            </form>
             <div class="table-responsive">
                 <table class="table table-hover table-centered table-nowrap mb-0 rounded">
                     <thead style="background-color: #F8BD7A; color: #262B40;">
@@ -64,6 +77,7 @@
                             <th class="border-0">Product Name</th>
                             <th class="border-0">Cost Price</th>
                             <th class="border-0">Selling Price</th>
+                            <th>Available Stock{% if selected_branch %} ({{ selected_branch.name }}){% else %} (All Branches){% endif %}</th>
                             <th class="border-0 rounded-end">Actions</th>
                         </tr>
                     </thead>
@@ -74,6 +88,7 @@
                             <td><strong>{{ item.name }}</strong></td>
                             <td>{{ item.cost_price|default:"N/A"|intcomma }}</td>
                             <td>{{ item.selling_price|intcomma }}</td>
+                            <td>{{ item.display_stock }}</td>
                             <td>
                                 <a href="{% url 'edit-service-product' item.id %}" class="btn btn-sm btn-outline-primary me-1" title="Edit">
                                     <i class="bi bi-pencil"></i>

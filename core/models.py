@@ -10,6 +10,15 @@ from decimal import Decimal # Important for financial calculations
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 
+class Payment(models.Model):
+    transaction = models.ForeignKey('Transaction', related_name='payments', on_delete=models.CASCADE)
+    amount = models.DecimalField(max_digits=12, decimal_places=2)
+    payment_date = models.DateTimeField(auto_now_add=True)
+    payment_method = models.CharField(max_length=50, blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return f"Payment of {self.amount} for {self.transaction}"
 
 class User(AbstractUser):
     email = models.EmailField(unique=True)
@@ -68,6 +77,23 @@ class Item(models.Model):
 
     def __str__(self):
         return self.name
+    
+    def available_stock(self, branch=None):
+        filters = {}
+        if branch:
+            filters['transaction__branch'] = branch
+
+        stock_in = self.transaction_items.filter(
+            transaction__transaction_type='expense',
+            **filters
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        stock_out = self.transaction_items.filter(
+            transaction__transaction_type='revenue',
+            **filters
+        ).aggregate(total=Sum('quantity'))['total'] or 0
+
+        return stock_in - stock_out
 
 class UserRole(models.Model):
     business = models.ForeignKey(Business, on_delete=models.CASCADE, related_name='roles')
@@ -283,7 +309,7 @@ class Transaction(models.Model):
 # Associates each transaction with individual items and quantity.
 class TransactionItem(models.Model):
     transaction = models.ForeignKey('Transaction', on_delete=models.CASCADE, related_name='transaction_items')
-    item = models.ForeignKey('Item', on_delete=models.CASCADE)
+    item = models.ForeignKey('Item', on_delete=models.CASCADE, related_name='transaction_items')
     quantity = models.PositiveIntegerField(default=1)
     employee = models.ForeignKey('BranchEmployee', on_delete=models.SET_NULL, null=True, blank=True, related_name='item_sales')
 

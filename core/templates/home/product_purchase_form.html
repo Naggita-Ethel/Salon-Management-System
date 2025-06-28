@@ -210,7 +210,7 @@
 {% block javascripts %}
     <script>
         // Ensure itemPrices and BUSINESS_SETTINGS are properly passed and are not empty/malformed
-        const itemPrices = {{ item_prices_json|safe }};
+        var itemPrices = {{ item_prices_json|safe }};
         var subtotalDisplay = document.getElementById('subtotal_display');
         var grandTotalDisplay = document.getElementById('grand_total_display');
         const CSRF_TOKEN = "{{ csrf_token }}";
