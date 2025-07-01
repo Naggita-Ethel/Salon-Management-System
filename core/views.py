@@ -29,6 +29,27 @@ import io
 from django.template.loader import get_template
 
 @login_required
+def print_supplier_payment_receipt(request, payment_id):
+    payment = get_object_or_404(Payment, id=payment_id)
+    transaction = payment.transaction
+    context = {
+        'payment': payment,
+        'transaction': transaction,
+        'is_final': transaction.amount_paid >= transaction.amount,
+    }
+    return render(request, 'home/print_supplier_payment_receipt.html', context)
+
+@login_required
+def print_supplier_full_receipt(request, transaction_id):
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    payments = transaction.payments.all().order_by('payment_date')
+    context = {
+        'transaction': transaction,
+        'payments': payments,
+    }
+    return render(request, 'home/print_supplier_full_receipt.html', context)
+
+@login_required
 def product_purchase_detail_view(request, transaction_id):
     transaction = get_object_or_404(Transaction, id=transaction_id, business=request.user.business)
     payments = transaction.payments.all().order_by('payment_date')

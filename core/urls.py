@@ -1,8 +1,10 @@
 from django.urls import path
-from .views import add_employee_view, add_payment_view, add_service_product_view, addbranch_view, branch_view, customer_add_view, customer_delete_view, customer_discount_settings_view, customer_edit_view, customer_list_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, get_customer_details, get_customer_loyalty_data, get_employees_by_branch, get_items_by_category,  pagelock_view, product_purchase_create_view, product_purchase_detail_view, product_purchase_list_view, receipt_view, register_business, revenue_create_view, revenue_list_view, services_products_view, settings_view, toggle_payment_status, transaction_void_view, update_transaction_status
+from .views import add_employee_view, add_payment_view, add_service_product_view, addbranch_view, branch_view, customer_add_view, customer_delete_view, customer_discount_settings_view, customer_edit_view, customer_list_view, dashboard_view, delete_branch_view, delete_employee_view, delete_service_product_view, edit_branch_view, edit_employee_view, edit_service_product_view, employees_view, expense_list_view, forgot_password, forms_view, get_customer_details, get_customer_loyalty_data, get_employees_by_branch, get_items_by_category,  pagelock_view, print_supplier_full_receipt, print_supplier_payment_receipt, product_purchase_create_view, product_purchase_detail_view, product_purchase_list_view, receipt_view, register_business, revenue_create_view, revenue_list_view, services_products_view, settings_view, toggle_payment_status, transaction_void_view, update_transaction_status
 from django.contrib.auth import views as auth_views
 
 urlpatterns = [
+    path('supplier-payment-receipt/<int:payment_id>/', print_supplier_payment_receipt, name='print_supplier_payment_receipt'),
+    path('supplier-full-receipt/<int:transaction_id>/', print_supplier_full_receipt, name='print_supplier_full_receipt'),
     path('purchases/<int:transaction_id>/', product_purchase_detail_view, name='product_purchase_detail'),
     path('purchases/<int:transaction_id>/add-payment/', add_payment_view, name='add_payment'),
     path('product-purchases/', product_purchase_list_view, name='product_purchase_list'),

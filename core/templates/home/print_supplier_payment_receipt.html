@@ -1,0 +1,31 @@
+{% load humanize %}
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Supplier Payment Receipt</title>
+    <style>
+        body { font-family: Arial, sans-serif; }
+        .receipt { max-width: 400px; margin: 0 auto; border: 1px solid #ccc; padding: 24px; }
+        .title { font-size: 1.2em; font-weight: bold; margin-bottom: 12px; }
+    </style>
+</head>
+<body>
+    <div class="receipt">
+        <div class="title">Supplier Payment Receipt</div>
+        <p><strong>Supplier:</strong> {{ transaction.party.full_name }}</p>
+        <p><strong>Transaction #:</strong> {{ transaction.id }}</p>
+        <p><strong>Date:</strong> {{ payment.payment_date|date:"Y-m-d H:i" }}</p>
+        <p><strong>Amount Paid:</strong> UGX {{ payment.amount|intcomma }}</p>
+        <p><strong>Payment Method:</strong> {{ payment.payment_method }}</p>
+        <p><strong>Notes:</strong> {{ payment.notes|default:"-" }}</p>
+        <hr>
+        <p><strong>Total Amount:</strong> UGX {{ transaction.amount|intcomma }}</p>
+        <p><strong>Total Paid So Far:</strong> UGX {{ transaction.amount_paid|intcomma }}</p>
+        <p><strong>Balance:</strong> UGX {{ transaction.amount|add:"-transaction.amount_paid"|intcomma }}</p>
+        {% if is_final %}
+            <p style="color:green;"><strong>PAID IN FULL</strong></p>
+        {% endif %}
+    </div>
+    <script>window.print();</script>
+</body>
+</html>

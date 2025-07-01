@@ -84,6 +84,7 @@
                             <th scope="col">Amount</th>
                             <th scope="col">Method</th>
                             <th scope="col">Notes</th>
+                            <th scope="col">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -92,7 +93,17 @@
                             <td>{{ payment.payment_date|date:"Y-m-d H:i" }}</td>
                             <td>UGX {{ payment.amount|intcomma }}</td>
                             <td>{{ payment.payment_method }}</td>
-                            <td>{{ payment.notes|default:"-" }}</td> {# Display '-' if notes are empty #}
+                            <td>{{ payment.notes|default:"-" }}</td> 
+                            <td>
+                            <a href="{% url 'print_supplier_payment_receipt' payment.id %}" class="btn btn-sm btn-outline-secondary" target="_blank">
+                                Print Receipt
+                            </a>
+                            {% if forloop.last and balance == 0 %}
+                                <a href="{% url 'print_supplier_full_receipt' transaction.id %}" class="btn btn-sm btn-success mt-1" target="_blank">
+                                    Print Full Receipt
+                                </a>
+                            {% endif %}
+                        </td>
                         </tr>
                         {% empty %}
                         <tr><td colspan="4" class="text-center py-3"><em>No payments yet.</em></td></tr>
